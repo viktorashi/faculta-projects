@@ -27,6 +27,7 @@ import (
 var EmbedFS embed.FS
 
 const sessionCookieName = "session_token"
+
 var hmacSecret = []byte("astraea-space-secret-key-change-me") // secret key for signing cookies
 
 type Satellite struct {
@@ -355,19 +356,6 @@ func (app *App) registerHandler(c *gin.Context) {
 		return
 	}
 
-	// Check if already exists
-	var count int
-	err := app.DBMaster.QueryRow("SELECT COUNT(*) FROM user WHERE email = ? OR username = ?", req.Email, req.Username).Scan(&count)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-		return
-	}
-	if count > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username or email already registered"})
-		return
-	}
-
-	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt password"})
@@ -380,6 +368,14 @@ func (app *App) registerHandler(c *gin.Context) {
 		req.Email, req.Username, string(hashedPassword),
 	)
 	if err != nil {
+		if strings.Contains(err.Error(), "Error 1062") {
+			if strings.Contains(err.Error(), "email") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Email address already registered"})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already taken"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account"})
 		return
 	}
