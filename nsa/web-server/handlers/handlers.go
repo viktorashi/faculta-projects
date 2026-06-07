@@ -381,11 +381,21 @@ func (app *App) registerHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Registration successful"})
-	body := "Doar ce te-ai inscris boss, welcome!"
-	err = smtp.SendMail("mailpit:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
-	if err != nil {
-		log.Printf("SMTP Error: Failed to send password reset email: %v", err)
-	}
+
+	// Send SMTP Welcome Email via Mailpit
+	go func() {
+		body := fmt.Sprintf("To: %s\r\n"+
+			"Subject: Welcome!\r\n"+
+			"MIME-Version: 1.0\r\n"+
+			"Content-Type: text/plain; charset=\"UTF-8\"\r\n"+
+			"\r\n"+
+			"Doar ce te-ai inscris boss, welcome!", req.Email)
+
+		err := smtp.SendMail("mailpit:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
+		if err != nil {
+			log.Printf("SMTP Error: Failed to send welcome email: %v", err)
+		}
+	}()
 }
 
 type LoginRequest struct {
