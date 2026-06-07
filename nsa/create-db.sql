@@ -40,5 +40,8 @@ CREATE TABLE IF NOT EXISTS `user` (
   `password_hash` VARCHAR(255) NOT NULL,
   `reset_token` VARCHAR(255) DEFAULT NULL,
   `reset_token_expiry` DATETIME DEFAULT NULL,
+  `is_confirmed` TINYINT(1) NOT NULL DEFAULT 0,
+  `confirmation_token` VARCHAR(255) DEFAULT NULL,
+  `confirmation_token_expiry` DATETIME DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE = InnoDB;

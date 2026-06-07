@@ -28,7 +28,7 @@ var EmbedFS embed.FS
 
 const sessionCookieName = "session_token"
 
-var hmacSecret = []byte("astraea-space-secret-key-change-me") // secret key for signing cookies
+var hmacSecret = []byte("lallalalalallaa sunt folosint penetur semnare de sesion cookies lachimolalla")
 
 type Satellite struct {
 	ID                     int     `json:"id"`
@@ -185,6 +185,7 @@ func StartServer(dbMaster, dbSlave *sql.DB) {
 	r.POST("/api/logout", app.logoutHandler)
 	r.POST("/api/forgot-password", app.forgotPasswordHandler)
 	r.POST("/api/reset-password", app.resetPasswordHandler)
+	r.POST("/api/confirm-email", app.confirmEmailHandler)
 
 	// Protected API Routes
 	api := r.Group("/api")
@@ -362,10 +363,15 @@ func (app *App) registerHandler(c *gin.Context) {
 		return
 	}
 
+	b := make([]byte, 20)
+	_, _ = rand.Read(b)
+	confirmToken := hex.EncodeToString(b)
+	confirmExpiry := time.Now().Add(24 * time.Hour)
+
 	// Insert user
 	_, err = app.DBMaster.Exec(
-		"INSERT INTO user (email, username, password_hash) VALUES (?, ?, ?)",
-		req.Email, req.Username, string(hashedPassword),
+		"INSERT INTO user (email, username, password_hash, is_confirmed, confirmation_token, confirmation_token_expiry) VALUES (?, ?, ?, 0, ?, ?)",
+		req.Email, req.Username, string(hashedPassword), confirmToken, confirmExpiry,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "Error 1062") {
@@ -380,20 +386,33 @@ func (app *App) registerHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Registration successful"})
+	c.JSON(http.StatusOK, gin.H{"message": "Registration successful. Please check your email to confirm your account."})
 
-	// Send SMTP Welcome Email via Mailpit
+	scheme := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	host := c.Request.Host
+	if forwardedHost := c.GetHeader("X-Forwarded-Host"); forwardedHost != "" {
+		host = forwardedHost
+	}
+
+	// Send SMTP Welcome/Confirmation Email via Mailpit
 	go func() {
+		confirmLink := fmt.Sprintf("%s://%s/?confirm_token=%s", scheme, host, confirmToken)
 		body := fmt.Sprintf("To: %s\r\n"+
-			"Subject: Welcome!\r\n"+
+			"Subject: Confirm your Astraea Account!\r\n"+
 			"MIME-Version: 1.0\r\n"+
-			"Content-Type: text/plain; charset=\"UTF-8\"\r\n"+
+			"Content-Type: text/html; charset=\"UTF-8\"\r\n"+
 			"\r\n"+
-			"Doar ce te-ai inscris boss, welcome!", req.Email)
+			"Hello %s,<br><br>Doar ce te-ai inscris boss, welcome!<br><br>"+
+			"Please click the link below to confirm your account and activate it:<br><br>"+
+			"<a href=\"%s\" style=\"background-color:#00f2fe; color:#06070d; padding:10px 20px; text-decoration:none; font-weight:bold; border-radius:6px;\">Confirm Account</a>",
+			req.Email, req.Username, confirmLink)
 
 		err := smtp.SendMail("mailpit:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
 		if err != nil {
-			log.Printf("SMTP Error: Failed to send welcome email: %v", err)
+			log.Printf("SMTP Error: Failed to send confirmation email: %v", err)
 		}
 	}()
 }
@@ -412,10 +431,11 @@ func (app *App) loginHandler(c *gin.Context) {
 
 	var userID int
 	var passwordHash string
+	var isConfirmed bool
 	err := app.DBSlave.QueryRow(
-		"SELECT id, password_hash FROM user WHERE username = ? OR email = ?",
+		"SELECT id, password_hash, is_confirmed FROM user WHERE username = ? OR email = ?",
 		req.Username, req.Username,
-	).Scan(&userID, &passwordHash)
+	).Scan(&userID, &passwordHash, &isConfirmed)
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
@@ -429,6 +449,11 @@ func (app *App) loginHandler(c *gin.Context) {
 	err = bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
+
+	if !isConfirmed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Please confirm your email address first"})
 		return
 	}
 
@@ -550,6 +575,53 @@ func (app *App) resetPasswordHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
+}
+
+func (app *App) confirmEmailHandler(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Confirmation token is required"})
+		return
+	}
+
+	var userID int
+	var expiry time.Time
+	var isConfirmed bool
+
+	err := app.DBSlave.QueryRow(
+		"SELECT id, confirmation_token_expiry, is_confirmed FROM user WHERE confirmation_token = ?",
+		token,
+	).Scan(&userID, &expiry, &isConfirmed)
+
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired confirmation token"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	if isConfirmed {
+		c.JSON(http.StatusOK, gin.H{"message": "Email is already confirmed"})
+		return
+	}
+
+	if time.Now().After(expiry) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Confirmation token has expired"})
+		return
+	}
+
+	// Update user to active in Master DB
+	_, err = app.DBMaster.Exec(
+		"UPDATE user SET is_confirmed = 1, confirmation_token = NULL, confirmation_token_expiry = NULL WHERE id = ?",
+		userID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to confirm email"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email confirmed successfully! You can now log in."})
 }
 
 func InitWebServer() {

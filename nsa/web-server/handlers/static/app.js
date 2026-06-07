@@ -703,8 +703,30 @@ btnLogout.addEventListener('click', async (e) => {
 window.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
   const resetToken = urlParams.get('reset_token');
+  const confirmToken = urlParams.get('confirm_token');
 
-  if (resetToken) {
+  if (confirmToken) {
+    // Call the email confirmation endpoint
+    fetch(`/api/confirm-email?token=${confirmToken}`, { method: 'POST' })
+      .then(response => response.json().then(data => ({ status: response.status, body: data })))
+      .then(res => {
+        if (res.status === 200) {
+          showToast(res.body.message || 'Email confirmed successfully! You can now log in.', 'success');
+        } else {
+          showToast(res.body.error || 'Failed to confirm email.', 'error');
+        }
+        // Clean URL params and load normal view
+        window.history.replaceState({}, document.title, "/");
+        loadSatellites();
+        startOrbitAnimations();
+      })
+      .catch(err => {
+        showToast('Error confirming email.', 'error');
+        window.history.replaceState({}, document.title, "/");
+        loadSatellites();
+        startOrbitAnimations();
+      });
+  } else if (resetToken) {
     appContainer.style.display = 'none';
     authContainer.style.display = 'flex';
     resetTokenInput.value = resetToken;
