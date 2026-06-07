@@ -481,9 +481,17 @@ func (app *App) forgotPasswordHandler(c *gin.Context) {
 		return
 	}
 
+	scheme := "http"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	host := c.Request.Host
+	if forwardedHost := c.GetHeader("X-Forwarded-Host"); forwardedHost != "" {
+		host = forwardedHost
+	}
+
 	go func() {
-		// Use port 8443 in the link since the user runs on HTTPS port 8443
-		resetLink := fmt.Sprintf("https://localhost:8443/?reset_token=%s", token)
+		resetLink := fmt.Sprintf("%s://%s/?reset_token=%s", scheme, host, token)
 		body := fmt.Sprintf("Subject: Astraea Password Reset\r\n"+
 			"MIME-version: 1.0;\r\nContent-Type: text/html; charset=\"UTF-8\";\r\n\r\n"+
 			"Hello %s,<br><br>A request was received to reset your password. Click the link below to set a new password:<br><br>"+

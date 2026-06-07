@@ -7,7 +7,7 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
 # Copy the pre-compiled binary from the host context
-COPY web-server .
+COPY out/web-server .
 
 # Expose server port
 EXPOSE 8000
