@@ -7,23 +7,22 @@ import (
 )
 
 func Ceaw(name string) (string, error) {
-	return handleName(string)
-}
-
-func CeawLaMulti(names [string]) []string, error {
-	var res []string, error
-	for name in names{
-		res.append(name)
-	}
-	return res
-}
-
-func handleName()(name string) (string, error) {
-		if name == "" {
+	if name == "" {
 		return "", errors.New("Vezi ca n-ai scris nimic")
 	}
 	return fmt.Sprintf(randomSalutares(), name), nil
+}
 
+func CeawLaMulti(names []string) (map[string]string, error) {
+	salutations := make(map[string]string)
+	for _, name := range names {
+		salutares, err := Ceaw(name)
+		if err != nil {
+			return salutations, errors.New("A name is empty, these are the ones handled so far")
+		}
+		salutations[name] = salutares
+	}
+	return salutations, nil
 }
 
 func randomSalutares() string {
