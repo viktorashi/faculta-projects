@@ -10,7 +10,7 @@ import (
 func main() {
 	log.SetPrefix("greetings: ")
 	log.SetFlags(0)
-	message, err := salutares.Ceaw("buybuu miccc")
+	message, err := salutares.Ceaw("Pookie coookie")
 	if err != nil {
 		log.Fatal(err)
 	}
