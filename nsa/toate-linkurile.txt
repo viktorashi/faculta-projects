@@ -1,0 +1,6 @@
+# astea sa vezi cehstii de app
+https://viktora.sh:8443
+http://viktora.sh:8081  
+http://viktora.sh:8025
+http://viktora.sh:8080/index.php?route=/sql&pos=0&db=satelites&table=user
+
