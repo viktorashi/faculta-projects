@@ -1,4 +1,4 @@
-module nsa-project
+module example.com/salutares
 
 go 1.26.4
 
