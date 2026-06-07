@@ -7,10 +7,23 @@ import (
 )
 
 func Ceaw(name string) (string, error) {
-	if name == "" {
+	return handleName(string)
+}
+
+func CeawLaMulti(names [string]) []string, error {
+	var res []string, error
+	for name in names{
+		res.append(name)
+	}
+	return res
+}
+
+func handleName()(name string) (string, error) {
+		if name == "" {
 		return "", errors.New("Vezi ca n-ai scris nimic")
 	}
 	return fmt.Sprintf(randomSalutares(), name), nil
+
 }
 
 func randomSalutares() string {
