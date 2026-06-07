@@ -11,3 +11,24 @@ CREATE TABLE IF NOT EXISTS `satelite` (
   `argument_of_perigee` DOUBLE NOT NULL CHECK (`argument_of_perigee` >= 0.0 AND `argument_of_perigee` <= 360.0),
   PRIMARY KEY (`id`)
 ) ENGINE = InnoDB;
+
+-- Seed initial values if they do not exist
+INSERT INTO `satelite` (`id`, `name`, `semimajor_axis`, `eccentricity`, `inclination`, `longitude_ascending_node`, `argument_of_perigee`)
+SELECT 1, 'fratzica', 6656, 0.9999, 10, 0, 120
+WHERE NOT EXISTS (SELECT 1 FROM `satelite` WHERE `id` = 1);
+
+INSERT INTO `satelite` (`id`, `name`, `semimajor_axis`, `eccentricity`, `inclination`, `longitude_ascending_node`, `argument_of_perigee`)
+SELECT 2, 'fratzica2', 26560, 0, 55, 0, 120.3
+WHERE NOT EXISTS (SELECT 1 FROM `satelite` WHERE `id` = 2);
+
+INSERT INTO `satelite` (`id`, `name`, `semimajor_axis`, `eccentricity`, `inclination`, `longitude_ascending_node`, `argument_of_perigee`)
+SELECT 3, 'ISS (International Space Station)', 6790, 0.0005, 51.64, 125, 240
+WHERE NOT EXISTS (SELECT 1 FROM `satelite` WHERE `id` = 3);
+
+INSERT INTO `satelite` (`id`, `name`, `semimajor_axis`, `eccentricity`, `inclination`, `longitude_ascending_node`, `argument_of_perigee`)
+SELECT 4, 'Hubble Space Telescope', 6918, 0.0003, 28.47, 80, 110
+WHERE NOT EXISTS (SELECT 1 FROM `satelite` WHERE `id` = 4);
+
+INSERT INTO `satelite` (`id`, `name`, `semimajor_axis`, `eccentricity`, `inclination`, `longitude_ascending_node`, `argument_of_perigee`)
+SELECT 5, 'GEO-Comm 1', 42164, 0.0001, 0.05, 180, 0
+WHERE NOT EXISTS (SELECT 1 FROM `satelite` WHERE `id` = 5);
