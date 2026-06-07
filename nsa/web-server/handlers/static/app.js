@@ -240,7 +240,7 @@ function renderCatalog() {
                 </div>
             </div>
             <div class="card-actions">
-                <button class="btn-icon edit" onclick="editSatellite(${s.id})" title="Edit Telemetry">
+                <button class="btn-icon edit" onclick="editSatellite(${s.id})" title="Edit Sateltie">
                     <i class="fa-solid fa-pen-to-square"></i>
                 </button>
                 <button class="btn-icon delete" onclick="deleteSatellite(${s.id})" title="Decommission (Delete)">
@@ -296,7 +296,7 @@ async function deleteSatellite(id) {
       handleUnauthorized();
       return;
     }
-    if (!response.ok) throw new Error('Decommission command rejected by telemetry server');
+    if (!response.ok) throw new Error('Decommission command rejected by server');
 
     showToast(`Satellite #${id} successfully decommissioned and removed.`, 'success');
 
