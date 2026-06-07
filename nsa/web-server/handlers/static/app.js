@@ -40,7 +40,7 @@ const appContainer = document.querySelector('.app-container');
 const loginForm = document.getElementById('login-form');
 const registerForm = document.getElementById('register-form');
 const forgotForm = document.getElementById('forgot-form');
-const resetForm = document.getElementById('reset-form');
+const resetPasswordForm = document.getElementById('reset-form');
 
 const linkToRegister = document.getElementById('link-to-register');
 const linkToForgot = document.getElementById('link-to-forgot');
@@ -545,7 +545,7 @@ function formatNum(num, decimals = 1) {
 
 function showAuthForm(formToShow) {
   // Hide all forms
-  [loginForm, registerForm, forgotForm, resetForm].forEach(f => f.classList.remove('active'));
+  [loginForm, registerForm, forgotForm, resetPasswordForm].forEach(f => f.classList.remove('active'));
 
   // Show target
   formToShow.classList.add('active');
@@ -661,7 +661,7 @@ forgotForm.addEventListener('submit', async (e) => {
 });
 
 // Reset Password Submit
-resetForm.addEventListener('submit', async (e) => {
+resetPasswordForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   errReset.innerText = '';
 
@@ -708,7 +708,7 @@ window.addEventListener('DOMContentLoaded', () => {
     appContainer.style.display = 'none';
     authContainer.style.display = 'flex';
     resetTokenInput.value = resetToken;
-    showAuthForm(resetForm);
+    showAuthForm(resetPasswordForm);
   } else {
     loadSatellites();
     startOrbitAnimations();
