@@ -85,7 +85,14 @@ func StartServer(db *sql.DB) {
 
 	port := getEnv("PORT", "8000")
 	log.Printf("Server starting on port %s...", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+
+	hostname, _ := os.Hostname()
+	wrappedMux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Handled-By", hostname)
+		mux.ServeHTTP(w, r)
+	})
+
+	if err := http.ListenAndServe(":"+port, wrappedMux); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -101,7 +108,10 @@ func (app *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	tmpl.Execute(w, nil)
+	hostname, _ := os.Hostname()
+	tmpl.Execute(w, map[string]interface{}{
+		"Hostname": hostname,
+	})
 }
 
 func (app *App) handleSatellites(w http.ResponseWriter, r *http.Request) {
