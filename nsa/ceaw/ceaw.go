@@ -1,19 +1,16 @@
 package main
 
 import (
-	"fmt"
-	"log"
-
-	"example.com/salutares"
+    "fmt"
+    "log"
+    "net/http"
 )
 
+func handler(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
+}
+
 func main() {
-	log.SetPrefix("greetings: ")
-	log.SetFlags(0)
-	names := []string{"CEA MAI DESTEATPTA FATA DIN LUMEE", ""}
-	message, err := salutares.CeawLaMulti(names)
-	if err != nil {
-		log.Fatal(message, err)
-	}
-	fmt.Println(message)
+    http.HandleFunc("/", handler)
+    log.Fatal(http.ListenAndServe(":8080", nil))
 }
