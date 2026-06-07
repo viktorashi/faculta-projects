@@ -6,11 +6,12 @@ import (
 	"math/rand"
 )
 
-func Ceaw(name string) (string, error) {
-	if name == "" {
+func Ceaw(nume string) (string, error) {
+	// iti da nume random
+	if nume == "" {
 		return "", errors.New("Vezi ca n-ai scris nimic")
 	}
-	return fmt.Sprintf(randomSalutares(), name), nil
+	return fmt.Sprintf(randomSalutares(), nume), nil
 }
 
 func CeawLaMulti(names []string) (map[string]string, error) {
