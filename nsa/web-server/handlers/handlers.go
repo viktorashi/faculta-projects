@@ -441,6 +441,7 @@ func (app *App) loginHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 		return
 	} else if err != nil {
+		log.Printf("Login Database Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
