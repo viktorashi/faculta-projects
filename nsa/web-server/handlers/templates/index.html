@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Astraea - Space Orbit Registry & Deduplicator</title>
+    <title>Spatiu lol registur de sateliti</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +26,7 @@
                     <div class="ring ring-2"></div>
                     <div class="dot"></div>
                 </div>
-                <h2>Astraea</h2>
+                <h2>Spatiu lol</h2>
                 <span>Orbit registry</span>
             </div>
 
@@ -34,11 +34,6 @@
                 <a href="#" class="nav-item active" id="tab-btn-catalog" data-tab="catalog">
                     <i class="fa-solid fa-satellite"></i>
                     <span>Satellite Catalog</span>
-                </a>
-                <a href="#" class="nav-item" id="tab-btn-dedup" data-tab="dedup">
-                    <i class="fa-solid fa-clone"></i>
-                    <span>Deduplication</span>
-                    <span class="badge" id="duplicate-badge" style="display: none;">0</span>
                 </a>
                 <a href="#" class="nav-item" id="tab-btn-add" data-tab="add">
                     <i class="fa-solid fa-circle-plus"></i>
@@ -106,25 +101,6 @@
                 </div>
             </section>
 
-            <!-- Tab: Deduplication -->
-            <section id="tab-dedup" class="tab-content">
-                <div class="dedup-intro">
-                    <div class="intro-icon"><i class="fa-solid fa-clone"></i></div>
-                    <div class="intro-text">
-                        <h3>Deduplication Engine</h3>
-                        <p>Astraea identifies satellites sharing matching names (after normalization) or having near-identical Keplerian elements, indicating potential duplicate database entries. Merge or delete them to maintain database hygiene.</p>
-                    </div>
-                </div>
-
-                <div class="dedup-container" id="dedup-container">
-                    <!-- Duplicate groups will be injected here -->
-                    <div class="loader-container">
-                        <div class="orbit-spinner"></div>
-                        <p>Scanning registry for anomalies...</p>
-                    </div>
-                </div>
-            </section>
-
             <!-- Tab: Register/Edit Satellite -->
             <section id="tab-add" class="tab-content">
                 <div class="form-container">
@@ -183,24 +159,6 @@
                                 <div class="help-text">Angle of closest approach (0° to 360°)</div>
                                 <div class="error-msg" id="err-sat-perigee"></div>
                             </div>
-                            <div class="form-group flex-align-end">
-                                <div class="checkbox-container">
-                                    <input type="checkbox" id="strict-mode" checked>
-                                    <label for="strict-mode">
-                                        <span class="custom-checkbox"></span>
-                                        Block duplicate registrations (Strict Mode)
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Real-time Duplicate Alert Panel -->
-                        <div class="duplicate-alert-panel" id="duplicate-warning-panel" style="display: none;">
-                            <div class="alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
-                            <div class="alert-info">
-                                <h4>Duplicate Warning</h4>
-                                <p id="duplicate-warning-text"></p>
-                            </div>
                         </div>
 
                         <div class="form-actions">
@@ -211,41 +169,6 @@
                 </div>
             </section>
         </main>
-    </div>
-
-    <!-- Merge Modal -->
-    <div class="modal-backdrop" id="merge-modal" style="display: none;">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-code-merge"></i> Merge Satellite Records</h3>
-                <button class="close-btn" id="merge-close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p class="modal-intro">You are merging multiple duplicate satellite records into a single master record. The other records will be permanently removed.</p>
-                
-                <div class="merge-option-group">
-                    <label>Select Master Record to Keep</label>
-                    <div id="merge-candidates-list">
-                        <!-- Injected dynamically -->
-                    </div>
-                </div>
-
-                <div class="merge-name-selection">
-                    <label for="merged-name">Final Satellite Name</label>
-                    <input type="text" id="merged-name" placeholder="Enter merged satellite name">
-                    <p class="help-text">You can edit the final name of the kept satellite.</p>
-                </div>
-
-                <div class="orbit-visualizer-container">
-                    <div class="visualizer-header">Orbit Path Preview</div>
-                    <canvas id="merge-orbit-canvas" width="400" height="200"></canvas>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="merge-cancel-btn">Cancel</button>
-                <button class="btn btn-primary" id="merge-confirm-btn">Confirm & Merge</button>
-            </div>
-        </div>
     </div>
 
     <!-- Custom JS -->

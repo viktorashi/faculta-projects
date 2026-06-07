@@ -785,35 +785,6 @@ body {
 .checkbox-container input:checked ~ .custom-checkbox:after {
     display: block;
 }
-
-/* Duplicate warning panel in form */
-.duplicate-alert-panel {
-    background-color: rgba(255, 0, 85, 0.05);
-    border: 1px solid rgba(255, 0, 85, 0.2);
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    display: flex;
-    gap: 1rem;
-    margin-top: 1.5rem;
-    align-items: flex-start;
-}
-
-.duplicate-alert-panel .alert-icon {
-    color: var(--danger);
-    font-size: 1.2rem;
-}
-
-.duplicate-alert-panel .alert-info h4 {
-    color: var(--danger);
-    font-size: 0.95rem;
-    margin-bottom: 0.2rem;
-}
-
-.duplicate-alert-panel .alert-info p {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-}
-
 .form-actions {
     display: flex;
     justify-content: flex-end;
@@ -858,17 +829,6 @@ body {
     color: var(--text-primary);
 }
 
-/* Deduplication Tab styling */
-.dedup-intro {
-    background: linear-gradient(135deg, rgba(112, 0, 255, 0.08) 0%, rgba(0, 242, 254, 0.03) 100%);
-    border: 1px solid rgba(112, 0, 255, 0.15);
-    border-radius: 14px;
-    padding: 1.5rem 2rem;
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-}
-
 .intro-icon {
     font-size: 2rem;
     color: var(--accent);
@@ -885,23 +845,6 @@ body {
     color: var(--text-secondary);
     font-size: 0.9rem;
     line-height: 1.4;
-}
-
-.dedup-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
-.duplicate-group-card {
-    background-color: var(--bg-surface);
-    border: 1px solid rgba(255, 184, 0, 0.15);
-    border-radius: 16px;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
 .group-header {
@@ -937,23 +880,6 @@ body {
     background-color: rgba(0, 242, 254, 0.1);
     color: var(--primary);
     border-color: rgba(0, 242, 254, 0.2);
-}
-
-.duplicate-items-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.duplicate-item-row {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
-    gap: 1rem;
-    background-color: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--border-color);
-    padding: 0.75rem 1rem;
-    border-radius: 8px;
-    align-items: center;
 }
 
 .item-name {
