@@ -73,8 +73,8 @@ services:
     depends_on:
       - web
 
-  mailhog:
-    image: mailhog/mailhog:latest
+  mailpit:
+    image: axllent/mailpit:latest
     restart: always
     ports:
       - "1025:1025"
