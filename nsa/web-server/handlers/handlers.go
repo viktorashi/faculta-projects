@@ -1,32 +1,42 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
-	"encoding/json"
+	"encoding/hex"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
 )
 
 //go:embed templates/* static/*
 var EmbedFS embed.FS
 
+const sessionCookieName = "session_token"
+var hmacSecret = []byte("astraea-space-secret-key-change-me") // secret key for signing cookies
+
 type Satellite struct {
 	ID                     int     `json:"id"`
-	Name                   string  `json:"name"`
-	SemimajorAxis          float64 `json:"semimajor_axis"`
-	Eccentricity           float64 `json:"eccentricity"`
-	Inclination            float64 `json:"inclination"`
-	LongitudeAscendingNode float64 `json:"longitude_ascending_node"`
-	ArgumentOfPerigee      float64 `json:"argument_of_perigee"`
+	Name                   string  `json:"name" binding:"required"`
+	SemimajorAxis          float64 `json:"semimajor_axis" binding:"required,gt=6378"`
+	Eccentricity           float64 `json:"eccentricity" binding:"required,gte=0.0,lt=1.0"`
+	Inclination            float64 `json:"inclination" binding:"required,gte=0.0,lte=180.0"`
+	LongitudeAscendingNode float64 `json:"longitude_ascending_node" binding:"required,gte=0.0,lte=360.0"`
+	ArgumentOfPerigee      float64 `json:"argument_of_perigee" binding:"required,gte=0.0,lte=360.0"`
 }
 
 type App struct {
@@ -45,7 +55,6 @@ func InitDB(dbHost string) (*sql.DB, error) {
 	var db *sql.DB
 	var err error
 
-	// Retry connecting to DB because MySQL container might take time to start
 	maxRetries := 25
 	for i := 1; i <= maxRetries; i++ {
 		log.Printf("Connecting to database at %s (attempt %d/%d)...", dbHost, i, maxRetries)
@@ -71,207 +80,241 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+// Session Helpers
+func generateSessionToken(userID int) string {
+	expiration := time.Now().Add(24 * time.Hour).Unix()
+	payload := fmt.Sprintf("%d_%d", userID, expiration)
+
+	h := hmac.New(sha256.New, hmacSecret)
+	h.Write([]byte(payload))
+	signature := hex.EncodeToString(h.Sum(nil))
+
+	return fmt.Sprintf("%s_%s", payload, signature)
+}
+
+func parseSessionToken(token string) (int, error) {
+	parts := strings.Split(token, "_")
+	if len(parts) != 3 {
+		return 0, fmt.Errorf("invalid token format")
+	}
+
+	userIDStr, expirationStr, signature := parts[0], parts[1], parts[2]
+
+	payload := fmt.Sprintf("%s_%s", userIDStr, expirationStr)
+	h := hmac.New(sha256.New, hmacSecret)
+	h.Write([]byte(payload))
+	expectedSignature := hex.EncodeToString(h.Sum(nil))
+
+	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
+		return 0, fmt.Errorf("signature verification failed")
+	}
+
+	expiration, err := strconv.ParseInt(expirationStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid expiration time")
+	}
+
+	if time.Now().Unix() > expiration {
+		return 0, fmt.Errorf("token expired")
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid user id")
+	}
+
+	return userID, nil
+}
+
+// Auth Middleware
+func (app *App) AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token, err := c.Cookie(sessionCookieName)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+
+		userID, err := parseSessionToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+
+		c.Set("userID", userID)
+		c.Next()
+	}
+}
+
 func StartServer(dbMaster, dbSlave *sql.DB) {
 	app := &App{DBMaster: dbMaster, DBSlave: dbSlave}
-	mux := http.NewServeMux()
 
-	// Static files & Templates
-	mux.HandleFunc("/", app.handleIndex)
-	mux.Handle("/static/", http.FileServer(http.FS(EmbedFS)))
+	r := gin.Default()
 
-	// API Routes
-	mux.HandleFunc("/api/satellites", app.handleSatellites)
-	mux.HandleFunc("/api/satellites/", app.handleSatelliteByID)
+	// Load templates
+	templ := template.Must(template.New("").ParseFS(EmbedFS, "templates/*.html"))
+	r.SetHTMLTemplate(templ)
+
+	// Static files mapping
+	subFS, err := fs.Sub(EmbedFS, "static")
+	if err != nil {
+		log.Fatalf("failed to create static sub fs: %v", err)
+	}
+	r.StaticFS("/static", http.FS(subFS))
+
+	// Hostname middleware to inject X-Handled-By header
+	hostname, _ := os.Hostname()
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("X-Handled-By", hostname)
+		c.Next()
+	})
+
+	// Page route
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", gin.H{
+			"Hostname": hostname,
+		})
+	})
+
+	// Auth Routes
+	r.POST("/api/register", app.registerHandler)
+	r.POST("/api/login", app.loginHandler)
+	r.POST("/api/logout", app.logoutHandler)
+	r.POST("/api/forgot-password", app.forgotPasswordHandler)
+	r.POST("/api/reset-password", app.resetPasswordHandler)
+
+	// Protected API Routes
+	api := r.Group("/api")
+	api.Use(app.AuthMiddleware())
+	{
+		api.GET("/satellites", app.listSatellites)
+		api.GET("/satellites/:id", app.getSatellite)
+		api.POST("/satellites", app.createSatellite)
+		api.PUT("/satellites/:id", app.updateSatellite)
+		api.DELETE("/satellites/:id", app.deleteSatellite)
+	}
 
 	port := getEnv("PORT", "8000")
 	log.Printf("Server starting on port %s...", port)
-
-	hostname, _ := os.Hostname()
-	wrappedMux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Handled-By", hostname)
-		mux.ServeHTTP(w, r)
-	})
-
-	if err := http.ListenAndServe(":"+port, wrappedMux); err != nil {
+	if err := r.Run(":" + port); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func (app *App) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	tmpl, err := template.ParseFS(EmbedFS, "templates/index.html")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error loading template: %v", err), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	hostname, _ := os.Hostname()
-	tmpl.Execute(w, map[string]interface{}{
-		"Hostname": hostname,
-	})
-}
-
-func (app *App) handleSatellites(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		app.listSatellites(w, r)
-	case http.MethodPost:
-		app.createSatellite(w, r)
-	default:
-		w.Header().Set("Allow", "GET, POST")
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func (app *App) handleSatelliteByID(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/satellites/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil || id <= 0 {
-		http.Error(w, "Invalid satellite ID", http.StatusBadRequest)
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		app.getSatellite(w, r, id)
-	case http.MethodPut:
-		app.updateSatellite(w, r, id)
-	case http.MethodDelete:
-		app.deleteSatellite(w, r, id)
-	default:
-		w.Header().Set("Allow", "GET, PUT, DELETE")
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func (app *App) listSatellites(w http.ResponseWriter, _ *http.Request) {
+// Existing Satellite Handlers (Ported to Gin)
+func (app *App) listSatellites(c *gin.Context) {
 	sats, err := app.getAllSatellites()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, sats)
+}
+
+func (app *App) getSatellite(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid satellite ID"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(sats)
-}
-
-func (app *App) getSatellite(w http.ResponseWriter, _ *http.Request, id int) {
 	var s Satellite
-	err := app.DBSlave.QueryRow(
+	err = app.DBSlave.QueryRow(
 		"SELECT id, name, semimajor_axis, eccentricity, inclination, longitude_ascending_node, argument_of_perigee FROM satelite WHERE id = ?",
 		id,
 	).Scan(&s.ID, &s.Name, &s.SemimajorAxis, &s.Eccentricity, &s.Inclination, &s.LongitudeAscendingNode, &s.ArgumentOfPerigee)
 
 	if err == sql.ErrNoRows {
-		http.Error(w, "Satellite not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Satellite not found"})
 		return
 	} else if err != nil {
-		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s)
+	c.JSON(http.StatusOK, s)
 }
 
-func (s *Satellite) Validate() error {
-	if strings.TrimSpace(s.Name) == "" {
-		return fmt.Errorf("Name cannot be empty")
-	}
-	if s.SemimajorAxis <= 0 {
-		return fmt.Errorf("Semi-major axis must be positive")
-	}
-	if s.Eccentricity < 0 || s.Eccentricity >= 1 {
-		return fmt.Errorf("Eccentricity must be between 0 and 1 (non-inclusive)")
-	}
-	return nil
-}
-
-func (app *App) createSatellite(w http.ResponseWriter, r *http.Request) {
+func (app *App) createSatellite(c *gin.Context) {
 	var s Satellite
-	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
-		http.Error(w, "Invalid input data", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&s); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := s.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Insert into DB
 	res, err := app.DBMaster.Exec(
 		"INSERT INTO satelite (name, semimajor_axis, eccentricity, inclination, longitude_ascending_node, argument_of_perigee) VALUES (?, ?, ?, ?, ?, ?)",
 		s.Name, s.SemimajorAxis, s.Eccentricity, s.Inclination, s.LongitudeAscendingNode, s.ArgumentOfPerigee,
 	)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to insert record: %v", err), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to insert record: %v", err)})
 		return
 	}
 
 	lastID, _ := res.LastInsertId()
 	s.ID = int(lastID)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(s)
+	c.JSON(http.StatusCreated, s)
 }
 
-func (app *App) updateSatellite(w http.ResponseWriter, r *http.Request, id int) {
+func (app *App) updateSatellite(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid satellite ID"})
+		return
+	}
+
 	var s Satellite
-	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
-		http.Error(w, "Invalid input data", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&s); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := s.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Check if satellite exists
 	var tempID int
-	err := app.DBMaster.QueryRow("SELECT id FROM satelite WHERE id = ?", id).Scan(&tempID)
+	err = app.DBMaster.QueryRow("SELECT id FROM satelite WHERE id = ?", id).Scan(&tempID)
 	if err == sql.ErrNoRows {
-		http.Error(w, "Satellite not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Satellite not found"})
 		return
 	} else if err != nil {
-		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Update DB
 	_, err = app.DBMaster.Exec(
 		"UPDATE satelite SET name = ?, semimajor_axis = ?, eccentricity = ?, inclination = ?, longitude_ascending_node = ?, argument_of_perigee = ? WHERE id = ?",
 		s.Name, s.SemimajorAxis, s.Eccentricity, s.Inclination, s.LongitudeAscendingNode, s.ArgumentOfPerigee, id,
 	)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update record: %v", err), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to update record: %v", err)})
 		return
 	}
 
 	s.ID = id
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s)
+	c.JSON(http.StatusOK, s)
 }
 
-func (app *App) deleteSatellite(w http.ResponseWriter, _ *http.Request, id int) {
+func (app *App) deleteSatellite(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid satellite ID"})
+		return
+	}
+
 	res, err := app.DBMaster.Exec("DELETE FROM satelite WHERE id = ?", id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete record: %v", err), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	rowsAffected, _ := res.RowsAffected()
 	if rowsAffected == 0 {
-		http.Error(w, "Satellite not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Satellite not found"})
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
 func (app *App) getAllSatellites() ([]Satellite, error) {
@@ -295,6 +338,201 @@ func (app *App) getAllSatellites() ([]Satellite, error) {
 		sats = []Satellite{}
 	}
 	return sats, nil
+}
+
+// --- NEW AUTHENTICATION HANDLERS ---
+
+type RegisterRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Username string `json:"username" binding:"required,min=3,max=30"`
+	Password string `json:"password" binding:"required,min=6"`
+}
+
+func (app *App) registerHandler(c *gin.Context) {
+	var req RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if already exists
+	var count int
+	err := app.DBMaster.QueryRow("SELECT COUNT(*) FROM user WHERE email = ? OR username = ?", req.Email, req.Username).Scan(&count)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if count > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username or email already registered"})
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt password"})
+		return
+	}
+
+	// Insert user
+	_, err = app.DBMaster.Exec(
+		"INSERT INTO user (email, username, password_hash) VALUES (?, ?, ?)",
+		req.Email, req.Username, string(hashedPassword),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Registration successful"})
+}
+
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+func (app *App) loginHandler(c *gin.Context) {
+	var req LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var userID int
+	var passwordHash string
+	err := app.DBSlave.QueryRow(
+		"SELECT id, password_hash FROM user WHERE username = ? OR email = ?",
+		req.Username, req.Username,
+	).Scan(&userID, &passwordHash)
+
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Verify password
+	err = bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
+
+	// Set session cookie
+	token := generateSessionToken(userID)
+	c.SetCookie(sessionCookieName, token, 86400, "/", "", false, true)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
+}
+
+func (app *App) logoutHandler(c *gin.Context) {
+	// Clear cookie by setting max age to -1
+	c.SetCookie(sessionCookieName, "", -1, "/", "", false, true)
+	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+func (app *App) forgotPasswordHandler(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var userID int
+	var username string
+	err := app.DBSlave.QueryRow("SELECT id, username FROM user WHERE email = ?", req.Email).Scan(&userID, &username)
+	if err == sql.ErrNoRows {
+		// Silently succeed to prevent account enumeration
+		c.JSON(http.StatusOK, gin.H{"message": "If this email is registered, a reset link has been sent"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Generate random reset token
+	b := make([]byte, 20)
+	_, _ = rand.Read(b)
+	token := hex.EncodeToString(b)
+	expiry := time.Now().Add(15 * time.Minute)
+
+	// Save token to master DB
+	_, err = app.DBMaster.Exec("UPDATE user SET reset_token = ?, reset_token_expiry = ? WHERE id = ?", token, expiry, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	// Send SMTP Email via MailHog
+	go func() {
+		// Use port 8443 in the link since the user runs on HTTPS port 8443
+		resetLink := fmt.Sprintf("https://localhost:8443/?reset_token=%s", token)
+		body := fmt.Sprintf("Subject: Astraea Password Reset\r\n"+
+			"MIME-version: 1.0;\r\nContent-Type: text/html; charset=\"UTF-8\";\r\n\r\n"+
+			"Hello %s,<br><br>A request was received to reset your password. Click the link below to set a new password:<br><br>"+
+			"<a href=\"%s\" style=\"background-color:#00f2fe; color:#06070d; padding:10px 20px; text-decoration:none; font-weight:bold; border-radius:6px;\">Reset Password</a><br><br>"+
+			"This link will expire in 15 minutes.<br><br>If you did not request this, you can safely ignore this email.", username, resetLink)
+
+		// MailHog SMTP address
+		err := smtp.SendMail("mailhog:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
+		if err != nil {
+			log.Printf("SMTP Error: Failed to send password reset email: %v", err)
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{"message": "If this email is registered, a reset link has been sent"})
+}
+
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Password string `json:"password" binding:"required,min=6"`
+}
+
+func (app *App) resetPasswordHandler(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var userID int
+	var expiry time.Time
+	err := app.DBSlave.QueryRow("SELECT id, reset_token_expiry FROM user WHERE reset_token = ?", req.Token).Scan(&userID, &expiry)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	if time.Now().After(expiry) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired token"})
+		return
+	}
+
+	// Encrypt new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt password"})
+		return
+	}
+
+	// Update password and clear token on Master DB
+	_, err = app.DBMaster.Exec("UPDATE user SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?", string(hashedPassword), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
 func InitWebServer() {

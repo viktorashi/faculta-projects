@@ -19,7 +19,6 @@ const catalogSearch = document.getElementById('catalog-search');
 const catalogSort = document.getElementById('catalog-sort');
 const satellitesContainer = document.getElementById('satellites-container');
 
-
 // Form Elements
 const satelliteForm = document.getElementById('satellite-form');
 const formTitleText = document.getElementById('form-title-text');
@@ -33,12 +32,46 @@ const inputEcc = document.getElementById('sat-ecc');
 const inputInc = document.getElementById('sat-inc');
 const inputLan = document.getElementById('sat-lan');
 const inputPerigee = document.getElementById('sat-perigee');
+
+// Auth DOM Elements
+const authContainer = document.getElementById('auth-container');
+const appContainer = document.querySelector('.app-container');
+
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const forgotForm = document.getElementById('forgot-form');
+const resetForm = document.getElementById('reset-form');
+
+const linkToRegister = document.getElementById('link-to-register');
+const linkToForgot = document.getElementById('link-to-forgot');
+const linkToLogin = document.getElementById('link-to-login');
+const linkBackToLogin = document.getElementById('link-back-to-login');
+const btnLogout = document.getElementById('btn-logout');
+
+const loginUsername = document.getElementById('login-username');
+const loginPassword = document.getElementById('login-password');
+const errLogin = document.getElementById('err-login');
+
+const regUsername = document.getElementById('reg-username');
+const regEmail = document.getElementById('reg-email');
+const regPassword = document.getElementById('reg-password');
+const errRegUsername = document.getElementById('err-reg-username');
+const errRegEmail = document.getElementById('err-reg-email');
+const errRegPassword = document.getElementById('err-reg-password');
+
+const forgotEmail = document.getElementById('forgot-email');
+const errForgot = document.getElementById('err-forgot');
+
+const resetPassword = document.getElementById('reset-password');
+const resetTokenInput = document.getElementById('reset-token');
+const errReset = document.getElementById('err-reset');
+
 // Tab Routing
 tabBtns.forEach(btn => {
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     const tab = btn.getAttribute('data-tab');
-    switchTab(tab);
+    if (tab) switchTab(tab);
   });
 });
 
@@ -107,8 +140,16 @@ function showToast(message, type = 'info') {
 async function loadSatellites() {
   try {
     const response = await fetch('/api/satellites');
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
     if (!response.ok) throw new Error('Failed to retrieve satellites');
     satellites = await response.json();
+
+    // Show app container and hide auth container
+    authContainer.style.display = 'none';
+    appContainer.style.display = 'flex';
 
     // Update stats
     statsTotal.innerText = satellites.length;
@@ -212,12 +253,14 @@ function renderCatalog() {
   });
 }
 
-
-
 // Edit Satellite
 async function editSatellite(id) {
   try {
     const response = await fetch(`/api/satellites/${id}`);
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
     if (!response.ok) throw new Error('Could not fetch satellite details');
     const s = await response.json();
 
@@ -249,6 +292,10 @@ async function deleteSatellite(id) {
 
   try {
     const response = await fetch(`/api/satellites/${id}`, { method: 'DELETE' });
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
     if (!response.ok) throw new Error('Decommission command rejected by telemetry server');
 
     showToast(`Satellite #${id} successfully decommissioned and removed.`, 'success');
@@ -287,14 +334,14 @@ satelliteForm.addEventListener('submit', async (e) => {
       body: JSON.stringify(payload)
     });
 
-    if (response.status === 409) {
-      const errData = await response.json();
+    if (response.status === 401) {
+      handleUnauthorized();
       return;
     }
 
     if (!response.ok) {
-      const txt = await response.text();
-      throw new Error(txt || 'Failed to save satellite record');
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to save satellite record');
     }
 
     const savedSat = await response.json();
@@ -367,7 +414,6 @@ function validateForm() {
 
   return isValid;
 }
-
 
 // Filter handlers
 catalogSearch.addEventListener('input', renderCatalog);
@@ -495,8 +541,176 @@ function formatNum(num, decimals = 1) {
   });
 }
 
+// --- NEW AUTHENTICATION SPA LOGIC ---
+
+function showAuthForm(formToShow) {
+  // Hide all forms
+  [loginForm, registerForm, forgotForm, resetForm].forEach(f => f.classList.remove('active'));
+
+  // Show target
+  formToShow.classList.add('active');
+
+  // Clear errors
+  document.querySelectorAll('.error-msg').forEach(el => el.innerText = '');
+
+  // Reset inputs
+  loginUsername.value = '';
+  loginPassword.value = '';
+  regUsername.value = '';
+  regEmail.value = '';
+  regPassword.value = '';
+  forgotEmail.value = '';
+  resetPassword.value = '';
+}
+
+function handleUnauthorized() {
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+  appContainer.style.display = 'none';
+  authContainer.style.display = 'flex';
+  showAuthForm(loginForm);
+}
+
+// Form Switch Event Listeners
+linkToRegister.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(registerForm); });
+linkToForgot.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(forgotForm); });
+linkToLogin.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(loginForm); });
+linkBackToLogin.addEventListener('click', (e) => { e.preventDefault(); showAuthForm(loginForm); });
+
+// Login Submit
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errLogin.innerText = '';
+
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: loginUsername.value.trim(),
+        password: loginPassword.value
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Login failed');
+
+    showToast('Signed in successfully!', 'success');
+    loadSatellites();
+    startOrbitAnimations();
+  } catch (err) {
+    errLogin.innerText = err.message;
+  }
+});
+
+// Register Submit
+registerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errRegUsername.innerText = '';
+  errRegEmail.innerText = '';
+  errRegPassword.innerText = '';
+
+  try {
+    const response = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: regUsername.value.trim(),
+        email: regEmail.value.trim(),
+        password: regPassword.value
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Registration failed');
+
+    showToast('Registration successful! Please sign in.', 'success');
+    showAuthForm(loginForm);
+  } catch (err) {
+    const msg = err.message;
+    if (msg.toLowerCase().includes('username')) errRegUsername.innerText = msg;
+    else if (msg.toLowerCase().includes('email')) errRegEmail.innerText = msg;
+    else errRegPassword.innerText = msg;
+  }
+});
+
+// Forgot Password Submit
+forgotForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errForgot.innerText = '';
+
+  try {
+    const response = await fetch('/api/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: forgotEmail.value.trim()
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Request failed');
+
+    showToast(data.message, 'success');
+    showAuthForm(loginForm);
+  } catch (err) {
+    errForgot.innerText = err.message;
+  }
+});
+
+// Reset Password Submit
+resetForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errReset.innerText = '';
+
+  try {
+    const response = await fetch('/api/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: resetTokenInput.value,
+        password: resetPassword.value
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Reset failed');
+
+    showToast('Password updated successfully! You can now sign in.', 'success');
+    window.history.replaceState({}, document.title, "/");
+    showAuthForm(loginForm);
+  } catch (err) {
+    errReset.innerText = err.message;
+  }
+});
+
+// Logout Button
+btnLogout.addEventListener('click', async (e) => {
+  e.preventDefault();
+  try {
+    const response = await fetch('/api/logout', { method: 'POST' });
+    if (!response.ok) throw new Error('Logout failed');
+    showToast('Signed out successfully.', 'info');
+    handleUnauthorized();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+});
+
 // Initializer
 window.addEventListener('DOMContentLoaded', () => {
-  loadSatellites();
-  startOrbitAnimations();
+  const urlParams = new URLSearchParams(window.location.search);
+  const resetToken = urlParams.get('reset_token');
+
+  if (resetToken) {
+    appContainer.style.display = 'none';
+    authContainer.style.display = 'flex';
+    resetTokenInput.value = resetToken;
+    showAuthForm(resetForm);
+  } else {
+    loadSatellites();
+    startOrbitAnimations();
+  }
 });

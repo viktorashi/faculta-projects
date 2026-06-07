@@ -1,3 +1,5 @@
+CREATE DATABASE IF NOT EXISTS `satelites`;
+
 CHANGE REPLICATION SOURCE TO
   SOURCE_HOST='mysql-master',
   SOURCE_USER='replicator',

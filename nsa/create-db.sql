@@ -32,3 +32,13 @@ WHERE NOT EXISTS (SELECT 1 FROM `satelite` WHERE `id` = 4);
 INSERT INTO `satelite` (`id`, `name`, `semimajor_axis`, `eccentricity`, `inclination`, `longitude_ascending_node`, `argument_of_perigee`)
 SELECT 5, 'GEO-Comm 1', 42164, 0.0001, 0.05, 180, 0
 WHERE NOT EXISTS (SELECT 1 FROM `satelite` WHERE `id` = 5);
+
+CREATE TABLE IF NOT EXISTS `user` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `email` VARCHAR(255) NOT NULL UNIQUE,
+  `username` VARCHAR(255) NOT NULL UNIQUE,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `reset_token` VARCHAR(255) DEFAULT NULL,
+  `reset_token_expiry` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE = InnoDB;

@@ -17,7 +17,90 @@
     <div class="stars"></div>
     <div class="twinkling"></div>
 
-    <div class="app-container">
+    <!-- Auth Container -->
+    <div id="auth-container" class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="orbit-logo auth-logo">
+                    <div class="ring ring-1"></div>
+                    <div class="ring ring-2"></div>
+                    <div class="dot"></div>
+                </div>
+                <h2 id="auth-title">Astraea Registry</h2>
+                <p id="auth-subtitle">Welcome back! Sign in to access orbital telemetry</p>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form active">
+                <div class="form-group">
+                    <label for="login-username">Username or Email</label>
+                    <input type="text" id="login-username" required placeholder="Enter username or email">
+                    <div class="error-msg" id="err-login"></div>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                <div class="auth-links">
+                    <a href="#" id="link-to-register">Create Account</a>
+                    <a href="#" id="link-to-forgot">Forgot Password?</a>
+                </div>
+            </form>
+
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form">
+                <div class="form-group">
+                    <label for="reg-username">Username</label>
+                    <input type="text" id="reg-username" required placeholder="Choose a username">
+                    <div class="error-msg" id="err-reg-username"></div>
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Email Address</label>
+                    <input type="email" id="reg-email" required placeholder="you@example.com">
+                    <div class="error-msg" id="err-reg-email"></div>
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" required placeholder="Choose a secure password">
+                    <div class="error-msg" id="err-reg-password"></div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Register Account</button>
+                <div class="auth-links">
+                    <span>Already have an account?</span>
+                    <a href="#" id="link-to-login">Sign In</a>
+                </div>
+            </form>
+
+            <!-- Forgot Password Form -->
+            <form id="forgot-form" class="auth-form">
+                <p class="auth-desc">Enter your email address and we'll send you a link to reset your password.</p>
+                <div class="form-group">
+                    <label for="forgot-email">Email Address</label>
+                    <input type="email" id="forgot-email" required placeholder="you@example.com">
+                    <div class="error-msg" id="err-forgot"></div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Send Reset Link</button>
+                <div class="auth-links">
+                    <a href="#" id="link-back-to-login">Back to Sign In</a>
+                </div>
+            </form>
+
+            <!-- Reset Password Form -->
+            <form id="reset-form" class="auth-form">
+                <p class="auth-desc">Enter your new secure password below.</p>
+                <input type="hidden" id="reset-token" value="">
+                <div class="form-group">
+                    <label for="reset-password">New Password</label>
+                    <input type="password" id="reset-password" required placeholder="Enter new password">
+                    <div class="error-msg" id="err-reset"></div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Update Password</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-container" style="display: none;">
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo-area">
@@ -30,7 +113,7 @@
                 <span>Orbit registry</span>
             </div>
 
-            <nav class="nav-menu">
+            <nav class="nav-menu" style="height: 100%; display: flex; flex-direction: column;">
                 <a href="#" class="nav-item active" id="tab-btn-catalog" data-tab="catalog">
                     <i class="fa-solid fa-satellite"></i>
                     <span>Satellite Catalog</span>
@@ -38,6 +121,10 @@
                 <a href="#" class="nav-item" id="tab-btn-add" data-tab="add">
                     <i class="fa-solid fa-circle-plus"></i>
                     <span>Register Satellite</span>
+                </a>
+                <a href="#" class="nav-item" id="btn-logout" style="margin-top: auto; color: var(--danger);">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Sign Out</span>
                 </a>
             </nav>
 
