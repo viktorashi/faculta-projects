@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astraea - Space Orbit Registry & Deduplicator</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="stars"></div>
+    <div class="twinkling"></div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="orbit-logo">
+                    <div class="ring ring-1"></div>
+                    <div class="ring ring-2"></div>
+                    <div class="dot"></div>
+                </div>
+                <h2>Astraea</h2>
+                <span>Orbit registry</span>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" id="tab-btn-catalog" data-tab="catalog">
+                    <i class="fa-solid fa-satellite"></i>
+                    <span>Satellite Catalog</span>
+                </a>
+                <a href="#" class="nav-item" id="tab-btn-dedup" data-tab="dedup">
+                    <i class="fa-solid fa-clone"></i>
+                    <span>Deduplication</span>
+                    <span class="badge" id="duplicate-badge" style="display: none;">0</span>
+                </a>
+                <a href="#" class="nav-item" id="tab-btn-add" data-tab="add">
+                    <i class="fa-solid fa-circle-plus"></i>
+                    <span>Register Satellite</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="status-dot online"></span>
+                    <span class="status-text">Telemetry Active</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-title">
+                    <h1 id="page-title">Satellite Catalog</h1>
+                    <p id="page-subtitle">Manage and track orbital paths in the catalog</p>
+                </div>
+                <div class="header-actions">
+                    <div class="metric-card">
+                        <span class="metric-label">Total Satellites</span>
+                        <span class="metric-value" id="stats-total">0</span>
+                    </div>
+                    <div class="metric-card warning">
+                        <span class="metric-label">Duplicates Detected</span>
+                        <span class="metric-value" id="stats-duplicates">0</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Notification Container -->
+            <div id="toast-container"></div>
+
+            <!-- Tab: Catalog -->
+            <section id="tab-catalog" class="tab-content active">
+                <!-- Search & Filters -->
+                <div class="filters-bar">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="catalog-search" placeholder="Search by name or parameters...">
+                    </div>
+                    <div class="filter-controls">
+                        <label for="catalog-sort">Sort by:</label>
+                        <select id="catalog-sort">
+                            <option value="id-desc">Recently Added</option>
+                            <option value="name-asc">Name (A-Z)</option>
+                            <option value="axis-desc">Semi-major Axis (High-Low)</option>
+                            <option value="ecc-desc">Eccentricity (High-Low)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Satellites Grid -->
+                <div class="satellites-grid" id="satellites-container">
+                    <!-- Cards will be injected dynamically -->
+                    <div class="loader-container">
+                        <div class="orbit-spinner"></div>
+                        <p>Syncing catalog with database...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Deduplication -->
+            <section id="tab-dedup" class="tab-content">
+                <div class="dedup-intro">
+                    <div class="intro-icon"><i class="fa-solid fa-clone"></i></div>
+                    <div class="intro-text">
+                        <h3>Deduplication Engine</h3>
+                        <p>Astraea identifies satellites sharing matching names (after normalization) or having near-identical Keplerian elements, indicating potential duplicate database entries. Merge or delete them to maintain database hygiene.</p>
+                    </div>
+                </div>
+
+                <div class="dedup-container" id="dedup-container">
+                    <!-- Duplicate groups will be injected here -->
+                    <div class="loader-container">
+                        <div class="orbit-spinner"></div>
+                        <p>Scanning registry for anomalies...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Register/Edit Satellite -->
+            <section id="tab-add" class="tab-content">
+                <div class="form-container">
+                    <div class="form-header">
+                        <h3 id="form-title-text">Register New Satellite</h3>
+                        <p id="form-subtitle-text">Enter the orbital elements to log the spacecraft</p>
+                    </div>
+
+                    <form id="satellite-form" novalidate>
+                        <input type="hidden" id="sat-id" value="">
+                        
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label for="sat-name">Satellite Name</label>
+                                <input type="text" id="sat-name" required placeholder="e.g., GPS BIIR-11 (PRN 19)">
+                                <div class="error-msg" id="err-sat-name"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-section-title">Orbital Elements (Keplerian)</div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sat-axis">Semi-major Axis (km)</label>
+                                <input type="number" step="any" id="sat-axis" required placeholder="e.g., 26560">
+                                <div class="help-text">Distance from center of Earth (min: 6378 km)</div>
+                                <div class="error-msg" id="err-sat-axis"></div>
+                            </div>
+                            <div class="form-group">
+                                <label for="sat-ecc">Eccentricity</label>
+                                <input type="number" step="any" id="sat-ecc" required placeholder="e.g., 0.005">
+                                <div class="help-text">Orbit elongation (0 = circular, 0.0 to 0.99)</div>
+                                <div class="error-msg" id="err-sat-ecc"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sat-inc">Inclination (°)</label>
+                                <input type="number" step="any" id="sat-inc" required placeholder="e.g., 55.0">
+                                <div class="help-text">Tilt angle relative to equator (0° to 180°)</div>
+                                <div class="error-msg" id="err-sat-inc"></div>
+                            </div>
+                            <div class="form-group">
+                                <label for="sat-lan">Longitude of Ascending Node (°)</label>
+                                <input type="number" step="any" id="sat-lan" required placeholder="e.g., 280.5">
+                                <div class="help-text">Ascending intersection angle (0° to 360°)</div>
+                                <div class="error-msg" id="err-sat-lan"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sat-perigee">Argument of Perigee (°)</label>
+                                <input type="number" step="any" id="sat-perigee" required placeholder="e.g., 120.3">
+                                <div class="help-text">Angle of closest approach (0° to 360°)</div>
+                                <div class="error-msg" id="err-sat-perigee"></div>
+                            </div>
+                            <div class="form-group flex-align-end">
+                                <div class="checkbox-container">
+                                    <input type="checkbox" id="strict-mode" checked>
+                                    <label for="strict-mode">
+                                        <span class="custom-checkbox"></span>
+                                        Block duplicate registrations (Strict Mode)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Real-time Duplicate Alert Panel -->
+                        <div class="duplicate-alert-panel" id="duplicate-warning-panel" style="display: none;">
+                            <div class="alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                            <div class="alert-info">
+                                <h4>Duplicate Warning</h4>
+                                <p id="duplicate-warning-text"></p>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="form-cancel-btn">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="form-submit-btn">Register Satellite</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Merge Modal -->
+    <div class="modal-backdrop" id="merge-modal" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-code-merge"></i> Merge Satellite Records</h3>
+                <button class="close-btn" id="merge-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-intro">You are merging multiple duplicate satellite records into a single master record. The other records will be permanently removed.</p>
+                
+                <div class="merge-option-group">
+                    <label>Select Master Record to Keep</label>
+                    <div id="merge-candidates-list">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <div class="merge-name-selection">
+                    <label for="merged-name">Final Satellite Name</label>
+                    <input type="text" id="merged-name" placeholder="Enter merged satellite name">
+                    <p class="help-text">You can edit the final name of the kept satellite.</p>
+                </div>
+
+                <div class="orbit-visualizer-container">
+                    <div class="visualizer-header">Orbit Path Preview</div>
+                    <canvas id="merge-orbit-canvas" width="400" height="200"></canvas>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="merge-cancel-btn">Cancel</button>
+                <button class="btn btn-primary" id="merge-confirm-btn">Confirm & Merge</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

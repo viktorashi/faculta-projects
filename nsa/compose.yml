@@ -4,6 +4,25 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ./create-db.sql:/docker-entrypoint-initdb.d/create-db.sql
+
+  web:
+    build:
+      context: ./web-server
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mysql
+    environment:
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=satelites
+      - PORT=8000
+
   phpmyadmin:
     image: phpmyadmin
     restart: always
@@ -11,3 +30,8 @@ services:
       - 8080:80
     environment:
       - PMA_ARBITRARY=1
+      - PMA_HOST=mysql
+      - PMA_USER=root
+      - PMA_PASSWORD=root
+    depends_on:
+      - mysql

@@ -1,0 +1,867 @@
+// State Management
+let satellites = [];
+let duplicates = [];
+let activeTab = 'catalog';
+let animationFrameId = null;
+let currentEditingId = null;
+
+// DOM Elements
+const tabBtns = document.querySelectorAll('.nav-item');
+const tabContents = document.querySelectorAll('.tab-content');
+const pageTitle = document.getElementById('page-title');
+const pageSubtitle = document.getElementById('page-subtitle');
+const toastContainer = document.getElementById('toast-container');
+
+// Stats Elements
+const statsTotal = document.getElementById('stats-total');
+const statsDuplicates = document.getElementById('stats-duplicates');
+const duplicateBadge = document.getElementById('duplicate-badge');
+
+// Catalog Elements
+const catalogSearch = document.getElementById('catalog-search');
+const catalogSort = document.getElementById('catalog-sort');
+const satellitesContainer = document.getElementById('satellites-container');
+
+// Deduplication Elements
+const dedupContainer = document.getElementById('dedup-container');
+
+// Form Elements
+const satelliteForm = document.getElementById('satellite-form');
+const formTitleText = document.getElementById('form-title-text');
+const formSubtitleText = document.getElementById('form-subtitle-text');
+const formSubmitBtn = document.getElementById('form-submit-btn');
+const formCancelBtn = document.getElementById('form-cancel-btn');
+const inputId = document.getElementById('sat-id');
+const inputName = document.getElementById('sat-name');
+const inputAxis = document.getElementById('sat-axis');
+const inputEcc = document.getElementById('sat-ecc');
+const inputInc = document.getElementById('sat-inc');
+const inputLan = document.getElementById('sat-lan');
+const inputPerigee = document.getElementById('sat-perigee');
+const strictModeCheckbox = document.getElementById('strict-mode');
+const duplicateWarningPanel = document.getElementById('duplicate-warning-panel');
+const duplicateWarningText = document.getElementById('duplicate-warning-text');
+
+// Merge Modal Elements
+const mergeModal = document.getElementById('merge-modal');
+const mergeCloseBtn = document.getElementById('merge-close-btn');
+const mergeCancelBtn = document.getElementById('merge-cancel-btn');
+const mergeConfirmBtn = document.getElementById('merge-confirm-btn');
+const mergeCandidatesList = document.getElementById('merge-candidates-list');
+const mergedNameInput = document.getElementById('merged-name');
+const mergeOrbitCanvas = document.getElementById('merge-orbit-canvas');
+let activeMergeGroup = null;
+
+// Tab Routing
+tabBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const tab = btn.getAttribute('data-tab');
+        switchTab(tab);
+    });
+});
+
+function switchTab(tabName) {
+    activeTab = tabName;
+    
+    // Toggle active classes
+    tabBtns.forEach(btn => {
+        if (btn.getAttribute('data-tab') === tabName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    tabContents.forEach(content => {
+        if (content.id === `tab-${tabName}`) {
+            content.classList.add('active');
+        } else {
+            content.classList.remove('active');
+        }
+    });
+
+    // Update Header Text
+    if (tabName === 'catalog') {
+        pageTitle.innerText = 'Satellite Catalog';
+        pageSubtitle.innerText = 'Manage and track orbital paths in the catalog';
+        loadSatellites();
+    } else if (tabName === 'dedup') {
+        pageTitle.innerText = 'Deduplication Dashboard';
+        pageSubtitle.innerText = 'Analyze orbit telemetry to clean up duplicate records';
+        loadDuplicates();
+    } else if (tabName === 'add') {
+        if (currentEditingId) {
+            pageTitle.innerText = 'Edit Satellite';
+            pageSubtitle.innerText = `Updating record ID: ${currentEditingId}`;
+        } else {
+            pageTitle.innerText = 'Register Satellite';
+            pageSubtitle.innerText = 'Enter orbital metrics to add a spacecraft to the tracking list';
+            resetForm();
+        }
+    }
+}
+
+// Toast Notifications
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    let iconClass = 'fa-circle-info';
+    if (type === 'success') iconClass = 'fa-circle-check';
+    if (type === 'error') iconClass = 'fa-triangle-exclamation';
+    if (type === 'warning') iconClass = 'fa-circle-exclamation';
+
+    toast.innerHTML = `
+        <i class="fa-solid ${iconClass}"></i>
+        <span>${message}</span>
+    `;
+    
+    toastContainer.appendChild(toast);
+    
+    // Slide out after 3.5s
+    setTimeout(() => {
+        toast.style.animation = 'slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) reverse forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// Fetch Satellites
+async function loadSatellites() {
+    try {
+        const response = await fetch('/api/satellites');
+        if (!response.ok) throw new Error('Failed to retrieve satellites');
+        satellites = await response.json();
+        
+        // Update stats
+        statsTotal.innerText = satellites.length;
+        
+        renderCatalog();
+        updateDuplicatesCount();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// Render Catalog
+function renderCatalog() {
+    satellitesContainer.innerHTML = '';
+    
+    if (satellites.length === 0) {
+        satellitesContainer.innerHTML = `
+            <div class="empty-state">
+                <i class="fa-solid fa-satellite-dish"></i>
+                <p>No satellites registered in the database. Add one to get started.</p>
+                <button class="btn btn-primary" onclick="switchTab('add')">Register First Satellite</button>
+            </div>
+        `;
+        return;
+    }
+
+    // Filter & Sort
+    const searchVal = catalogSearch.value.toLowerCase().trim();
+    let filtered = satellites.filter(s => {
+        return s.name.toLowerCase().includes(searchVal) || 
+               s.id.toString() === searchVal ||
+               s.semimajor_axis.toString().includes(searchVal) ||
+               s.eccentricity.toString().includes(searchVal);
+    });
+
+    const sortBy = catalogSort.value;
+    filtered.sort((a, b) => {
+        if (sortBy === 'id-desc') return b.id - a.id;
+        if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
+        if (sortBy === 'axis-desc') return b.semimajor_axis - a.semimajor_axis;
+        if (sortBy === 'ecc-desc') return b.eccentricity - a.eccentricity;
+        return 0;
+    });
+
+    if (filtered.length === 0) {
+        satellitesContainer.innerHTML = `
+            <div class="empty-state">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <p>No satellites match your search filters.</p>
+            </div>
+        `;
+        return;
+    }
+
+    filtered.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'satellite-card';
+        card.dataset.id = s.id;
+        
+        card.innerHTML = `
+            <div class="card-header">
+                <h3>${escapeHTML(s.name)}</h3>
+                <span class="card-id">#${s.id}</span>
+            </div>
+            <div class="card-orbit-preview">
+                <canvas class="orbit-canvas" 
+                        data-axis="${s.semimajor_axis}" 
+                        data-ecc="${s.eccentricity}" 
+                        data-inc="${s.inclination}"
+                        data-lan="${s.longitude_ascending_node}"
+                        data-perigee="${s.argument_of_perigee}"></canvas>
+            </div>
+            <div class="card-specs">
+                <div class="spec-item">
+                    <span class="spec-label">Semi-major Axis</span>
+                    <span class="spec-val">${formatNum(s.semimajor_axis)} km</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">Eccentricity</span>
+                    <span class="spec-val">${formatNum(s.eccentricity, 4)}</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">Inclination</span>
+                    <span class="spec-val">${formatNum(s.inclination)}°</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">Arg. Perigee</span>
+                    <span class="spec-val">${formatNum(s.argument_of_perigee)}°</span>
+                </div>
+            </div>
+            <div class="card-actions">
+                <button class="btn-icon edit" onclick="editSatellite(${s.id})" title="Edit Telemetry">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button class="btn-icon delete" onclick="deleteSatellite(${s.id})" title="Decommission (Delete)">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+        `;
+        
+        satellitesContainer.appendChild(card);
+    });
+}
+
+// Fetch & Update Duplicate Statistics
+async function updateDuplicatesCount() {
+    try {
+        const response = await fetch('/api/duplicates');
+        if (!response.ok) throw new Error('Failed to load duplicates');
+        duplicates = await response.json();
+        
+        const count = duplicates.length;
+        statsDuplicates.innerText = count;
+        
+        if (count > 0) {
+            duplicateBadge.innerText = count;
+            duplicateBadge.style.display = 'block';
+        } else {
+            duplicateBadge.style.display = 'none';
+        }
+    } catch (err) {
+        console.error("Error updating duplicates badge:", err);
+    }
+}
+
+// Fetch and Render Duplicates Tab
+async function loadDuplicates() {
+    try {
+        const response = await fetch('/api/duplicates');
+        if (!response.ok) throw new Error('Failed to retrieve duplicates list');
+        duplicates = await response.json();
+        
+        renderDuplicates();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// Render Duplicates Tab
+function renderDuplicates() {
+    dedupContainer.innerHTML = '';
+    
+    if (duplicates.length === 0) {
+        dedupContainer.innerHTML = `
+            <div class="empty-state" style="grid-column: 1/-1;">
+                <i class="fa-solid fa-shield-halved" style="color: var(--success); opacity: 0.8;"></i>
+                <p>Registry is perfectly clean. No duplicates detected!</p>
+            </div>
+        `;
+        return;
+    }
+
+    duplicates.forEach((group, index) => {
+        const card = document.createElement('div');
+        card.className = 'duplicate-group-card';
+        
+        // Determine why they are similar
+        const namesMatch = group.every((s, i, arr) => normalizeName(s.name) === normalizeName(arr[0].name));
+        const badgeText = namesMatch ? 'Normalized Name Match' : 'Orbital Elements Match';
+        const badgeClass = namesMatch ? 'similarity-badge' : 'similarity-badge orbit-match';
+
+        let rowsHTML = '';
+        group.forEach(s => {
+            rowsHTML += `
+                <div class="duplicate-item-row">
+                    <span class="item-name">${escapeHTML(s.name)} <span class="card-id">#${s.id}</span></span>
+                    <div class="item-spec-cell">
+                        <span class="val">${formatNum(s.semimajor_axis)} km</span>
+                        <span class="lbl">Axis</span>
+                    </div>
+                    <div class="item-spec-cell">
+                        <span class="val">${formatNum(s.eccentricity, 4)}</span>
+                        <span class="lbl">Ecc</span>
+                    </div>
+                    <div class="item-spec-cell">
+                        <span class="val">${formatNum(s.inclination)}°</span>
+                        <span class="lbl">Inc</span>
+                    </div>
+                    <div class="item-spec-cell">
+                        <span class="val">${formatNum(s.longitude_ascending_node)}°</span>
+                        <span class="lbl">LAN</span>
+                    </div>
+                    <div class="item-spec-cell">
+                        <span class="val">${formatNum(s.argument_of_perigee)}°</span>
+                        <span class="lbl">Perigee</span>
+                    </div>
+                    <button class="btn-icon delete" onclick="deleteSatellite(${s.id})" title="Delete immediately">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            `;
+        });
+
+        card.innerHTML = `
+            <div class="group-header">
+                <div class="group-title">
+                    <h4>Duplicate Group ${index + 1}</h4>
+                    <span class="${badgeClass}">${badgeText}</span>
+                </div>
+                <button class="btn btn-primary" onclick="openMergeModal(${index})">
+                    <i class="fa-solid fa-code-merge"></i> Merge Group
+                </button>
+            </div>
+            <div class="duplicate-items-list">
+                ${rowsHTML}
+            </div>
+        `;
+        
+        dedupContainer.appendChild(card);
+    });
+}
+
+// Edit Satellite
+async function editSatellite(id) {
+    try {
+        const response = await fetch(`/api/satellites/${id}`);
+        if (!response.ok) throw new Error('Could not fetch satellite details');
+        const s = await response.json();
+        
+        // Fill form
+        currentEditingId = id;
+        inputId.value = s.id;
+        inputName.value = s.name;
+        inputAxis.value = s.semimajor_axis;
+        inputEcc.value = s.eccentricity;
+        inputInc.value = s.inclination;
+        inputLan.value = s.longitude_ascending_node;
+        inputPerigee.value = s.argument_of_perigee;
+        
+        formTitleText.innerText = 'Edit Satellite';
+        formSubtitleText.innerText = `Update parameters for satellite #${id}`;
+        formSubmitBtn.innerText = 'Save Changes';
+        
+        switchTab('add');
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// Delete Satellite
+async function deleteSatellite(id) {
+    if (!confirm(`Are you sure you want to delete/decommission satellite record #${id}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/satellites/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Decommission command rejected by telemetry server');
+        
+        showToast(`Satellite #${id} successfully decommissioned and removed.`, 'success');
+        
+        // Refresh appropriate view
+        if (activeTab === 'catalog') {
+            loadSatellites();
+        } else if (activeTab === 'dedup') {
+            loadDuplicates();
+            loadSatellites(); // to update badge stats
+        }
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+// Form Validation and Submission
+satelliteForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+    
+    const payload = {
+        name: inputName.value.trim(),
+        semimajor_axis: parseFloat(inputAxis.value),
+        eccentricity: parseFloat(inputEcc.value),
+        inclination: parseFloat(inputInc.value),
+        longitude_ascending_node: parseFloat(inputLan.value),
+        argument_of_perigee: parseFloat(inputPerigee.value)
+    };
+
+    const isEdit = !!currentEditingId;
+    const url = isEdit ? `/api/satellites/${currentEditingId}` : '/api/satellites';
+    const method = isEdit ? 'PUT' : 'POST';
+    
+    // Strict mode handles duplicates at the API level
+    const strict = strictModeCheckbox.checked;
+    const apiURL = `${url}?strict=${strict}`;
+
+    try {
+        const response = await fetch(apiURL, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.status === 409) {
+            const errData = await response.json();
+            showToast(`${errData.error}: Similar to ${errData.duplicate.name} (ID: ${errData.duplicate.id})`, 'error');
+            highlightDuplicateWarning(errData.duplicate);
+            return;
+        }
+
+        if (!response.ok) {
+            const txt = await response.text();
+            throw new Error(txt || 'Failed to save satellite record');
+        }
+
+        const savedSat = await response.json();
+        showToast(`Satellite "${savedSat.name}" saved successfully as ID #${savedSat.id}!`, 'success');
+        
+        resetForm();
+        switchTab('catalog');
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+});
+
+formCancelBtn.addEventListener('click', () => {
+    resetForm();
+    switchTab('catalog');
+});
+
+function resetForm() {
+    currentEditingId = null;
+    inputId.value = '';
+    satelliteForm.reset();
+    formTitleText.innerText = 'Register New Satellite';
+    formSubtitleText.innerText = 'Enter the orbital elements to log the spacecraft';
+    formSubmitBtn.innerText = 'Register Satellite';
+    
+    // Clear errors
+    document.querySelectorAll('.error-msg').forEach(el => el.innerText = '');
+    duplicateWarningPanel.style.display = 'none';
+}
+
+function validateForm() {
+    let isValid = true;
+    
+    // Clear errors
+    document.querySelectorAll('.error-msg').forEach(el => el.innerText = '');
+
+    if (inputName.value.trim() === '') {
+        document.getElementById('err-sat-name').innerText = 'Satellite name is required';
+        isValid = false;
+    }
+
+    const axis = parseFloat(inputAxis.value);
+    if (isNaN(axis) || axis <= 6378) {
+        document.getElementById('err-sat-axis').innerText = 'Axis must be greater than Earth radius (6,378 km)';
+        isValid = false;
+    }
+
+    const ecc = parseFloat(inputEcc.value);
+    if (isNaN(ecc) || ecc < 0 || ecc >= 1) {
+        document.getElementById('err-sat-ecc').innerText = 'Eccentricity must be in range [0.0, 1.0)';
+        isValid = false;
+    }
+
+    const inc = parseFloat(inputInc.value);
+    if (isNaN(inc) || inc < 0 || inc > 180) {
+        document.getElementById('err-sat-inc').innerText = 'Inclination must be in range [0, 180] degrees';
+        isValid = false;
+    }
+
+    const lan = parseFloat(inputLan.value);
+    if (isNaN(lan) || lan < 0 || lan > 360) {
+        document.getElementById('err-sat-lan').innerText = 'LAN must be in range [0, 360] degrees';
+        isValid = false;
+    }
+
+    const perigee = parseFloat(inputPerigee.value);
+    if (isNaN(perigee) || perigee < 0 || perigee > 360) {
+        document.getElementById('err-sat-perigee').innerText = 'Argument of perigee must be in range [0, 360] degrees';
+        isValid = false;
+    }
+
+    return isValid;
+}
+
+// Real-time similarity checking in register form
+const inputFieldsToCheck = [inputName, inputAxis, inputEcc, inputInc, inputLan, inputPerigee];
+let debounceTimeout = null;
+
+inputFieldsToCheck.forEach(input => {
+    input.addEventListener('input', () => {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(checkSimilarityRealtime, 400);
+    });
+});
+
+function checkSimilarityRealtime() {
+    if (satellites.length === 0) return;
+    
+    const name = inputName.value.trim();
+    const axis = parseFloat(inputAxis.value);
+    const ecc = parseFloat(inputEcc.value);
+    const inc = parseFloat(inputInc.value);
+    const lan = parseFloat(inputLan.value);
+    const perigee = parseFloat(inputPerigee.value);
+    
+    if (!name && (isNaN(axis) || isNaN(ecc))) {
+        duplicateWarningPanel.style.display = 'none';
+        return;
+    }
+
+    // Model a temporary satellite
+    const tempSat = {
+        id: currentEditingId || -1,
+        name: name,
+        semimajor_axis: isNaN(axis) ? 0 : axis,
+        eccentricity: isNaN(ecc) ? 0 : ecc,
+        inclination: isNaN(inc) ? 0 : inc,
+        longitude_ascending_node: isNaN(lan) ? 0 : lan,
+        argument_of_perigee: isNaN(perigee) ? 0 : perigee
+    };
+
+    let match = null;
+    for (let s of satellites) {
+        if (s.id === tempSat.id) continue; // skip checking self when editing
+        
+        // 1. Name check
+        if (name && normalizeName(s.name) === normalizeName(name)) {
+            match = { sat: s, reason: 'identical normalized name' };
+            break;
+        }
+
+        // 2. Orbits check
+        if (tempSat.semimajor_axis > 0 && s.semimajor_axis > 0) {
+            const pctDiff = Math.abs(s.semimajor_axis - tempSat.semimajor_axis) / s.semimajor_axis;
+            if (pctDiff < 0.01 &&
+                Math.abs(s.eccentricity - tempSat.eccentricity) < 0.005 &&
+                Math.abs(s.inclination - tempSat.inclination) < 0.5 &&
+                Math.abs(s.longitude_ascending_node - tempSat.longitude_ascending_node) < 1.0 &&
+                Math.abs(s.argument_of_perigee - tempSat.argument_of_perigee) < 1.0) {
+                
+                match = { sat: s, reason: 'matching orbital parameters' };
+                break;
+            }
+        }
+    }
+
+    if (match) {
+        highlightDuplicateWarning(match.sat, match.reason);
+    } else {
+        duplicateWarningPanel.style.display = 'none';
+    }
+}
+
+function highlightDuplicateWarning(dup, reason = 'identical attributes') {
+    duplicateWarningText.innerHTML = `This spacecraft shares a ${reason} with existing satellite <strong>${escapeHTML(dup.name)}</strong> (ID: #${dup.id}). Saving this record will create a duplicate in the database.`;
+    duplicateWarningPanel.style.display = 'flex';
+}
+
+// Normalize Name helper
+function normalizeName(name) {
+    return name.toLowerCase().replace(/[\s\-_.]/g, '');
+}
+
+// Merge Operations
+function openMergeModal(groupIndex) {
+    activeMergeGroup = duplicates[groupIndex];
+    if (!activeMergeGroup) return;
+
+    mergeCandidatesList.innerHTML = '';
+    
+    activeMergeGroup.forEach((s, idx) => {
+        const option = document.createElement('div');
+        option.className = `merge-candidate-option ${idx === 0 ? 'selected' : ''}`;
+        option.dataset.id = s.id;
+        option.onclick = () => selectMergeMaster(s.id);
+
+        option.innerHTML = `
+            <input type="radio" name="master-choice" value="${s.id}" ${idx === 0 ? 'checked' : ''}>
+            <div class="candidate-details">
+                <span class="candidate-name">${escapeHTML(s.name)} (ID: #${s.id})</span>
+                <span class="candidate-summary">a: ${formatNum(s.semimajor_axis)}km, e: ${formatNum(s.eccentricity, 4)}, i: ${formatNum(s.inclination)}°</span>
+            </div>
+        `;
+        mergeCandidatesList.appendChild(option);
+    });
+
+    // Set initial merged name input to the first candidate's name
+    mergedNameInput.value = activeMergeGroup[0].name;
+    
+    // Show Modal
+    mergeModal.style.display = 'flex';
+    
+    // Draw the merge orbits overlay
+    drawMergeOrbitsOverlay();
+}
+
+function selectMergeMaster(id) {
+    document.querySelectorAll('.merge-candidate-option').forEach(opt => {
+        if (opt.dataset.id == id) {
+            opt.classList.add('selected');
+            opt.querySelector('input').checked = true;
+            
+            // Auto update input name
+            const selectedSat = activeMergeGroup.find(s => s.id === id);
+            if (selectedSat) {
+                mergedNameInput.value = selectedSat.name;
+            }
+        } else {
+            opt.classList.remove('selected');
+            opt.querySelector('input').checked = false;
+        }
+    });
+}
+
+function drawMergeOrbitsOverlay() {
+    const canvas = mergeOrbitCanvas;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+
+    // Draw Earth
+    ctx.beginPath();
+    ctx.arc(cx, cy, 10, 0, 2 * Math.PI);
+    ctx.fillStyle = '#00c6ff';
+    ctx.fill();
+
+    // Palette for overlay
+    const colors = ['rgba(0, 242, 254, 0.6)', 'rgba(112, 0, 255, 0.6)', 'rgba(255, 0, 85, 0.6)'];
+
+    activeMergeGroup.forEach((s, idx) => {
+        const color = colors[idx % colors.length];
+        
+        let scale = (h * 0.4) / 45000;
+        let major = s.semimajor_axis * scale;
+        if (major < 20) major = 20;
+        if (major > h * 0.45) major = h * 0.45;
+        
+        let minor = major * Math.sqrt(1 - s.eccentricity * s.eccentricity);
+        let c = major * s.eccentricity;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((s.argument_of_perigee + s.longitude_ascending_node) * Math.PI / 180);
+
+        ctx.beginPath();
+        ctx.ellipse(-c, 0, major, minor, 0, 0, 2 * Math.PI);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.restore();
+    });
+}
+
+// Close Modals
+mergeCloseBtn.onclick = closeMergeModal;
+mergeCancelBtn.onclick = closeMergeModal;
+
+function closeMergeModal() {
+    mergeModal.style.display = 'none';
+    activeMergeGroup = null;
+}
+
+mergeConfirmBtn.onclick = async () => {
+    if (!activeMergeGroup) return;
+
+    const selectedRadio = document.querySelector('input[name="master-choice"]:checked');
+    if (!selectedRadio) {
+        showToast('Please select a master record to keep', 'warning');
+        return;
+    }
+
+    const keepID = parseInt(selectedRadio.value);
+    const finalName = mergedNameInput.value.trim();
+    if (finalName === '') {
+        showToast('Please enter a name for the merged record', 'warning');
+        return;
+    }
+
+    // merge IDs are all IDs in the group except the one we want to keep
+    const mergeIDs = activeMergeGroup.map(s => s.id);
+
+    const payload = {
+        keep_id: keepID,
+        merge_ids: mergeIDs,
+        name: finalName
+    };
+
+    try {
+        const response = await fetch('/api/merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error('Merge transaction rejected by telemetry server');
+
+        showToast('Records merged and duplicates successfully consolidated.', 'success');
+        closeMergeModal();
+        loadDuplicates();
+        loadSatellites(); // reload main lists
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+// Filter handlers
+catalogSearch.addEventListener('input', renderCatalog);
+catalogSort.addEventListener('change', renderCatalog);
+
+// Animation Loop for Orbit canvases
+function startOrbitAnimations() {
+    function animate() {
+        // Find all visible canvases on the page
+        const canvases = document.querySelectorAll('.orbit-canvas');
+        
+        canvases.forEach(canvas => {
+            const a = parseFloat(canvas.dataset.axis);
+            const e = parseFloat(canvas.dataset.ecc);
+            const inc = parseFloat(canvas.dataset.inc);
+            const lan = parseFloat(canvas.dataset.lan);
+            const perigee = parseFloat(canvas.dataset.perigee);
+            
+            // Adjust canvas sizes to avoid scaling distortions
+            if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+                canvas.width = canvas.clientWidth;
+                canvas.height = canvas.clientHeight;
+            }
+
+            drawOrbit(canvas, a, e, inc, lan, perigee);
+        });
+
+        animationFrameId = requestAnimationFrame(animate);
+    }
+    animate();
+}
+
+function drawOrbit(canvas, a, e, inclination, lan, perigee) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+
+    // Draw grid rings
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.min(w, h) * 0.35, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+    ctx.stroke();
+
+    // Draw Earth
+    const earthGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 7);
+    earthGrad.addColorStop(0, '#00f2fe');
+    earthGrad.addColorStop(1, '#0055ff');
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
+    ctx.fillStyle = earthGrad;
+    ctx.shadowColor = 'rgba(0, 242, 254, 0.6)';
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Scale Orbit
+    let r_max = Math.min(w, h) * 0.4;
+    let scale = r_max / 42164; // GEO scale
+    let major = a * scale;
+    if (major < 12) major = 12; // LEO visibility
+    if (major > r_max) major = r_max; // GEO clamp
+
+    let minor = major * Math.sqrt(1 - e * e);
+    let c = major * e; // distance from focus to center
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((perigee + lan) * Math.PI / 180);
+
+    // Draw Orbit Path
+    ctx.beginPath();
+    ctx.ellipse(-c, 0, major, minor, 0, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(0, 242, 254, 0.25)';
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+
+    // Draw Perigee Dot (Gold)
+    ctx.beginPath();
+    ctx.arc(major - c, 0, 2.5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffb800';
+    ctx.fill();
+
+    // Draw Moving Satellite
+    // Calculate orbital period representation
+    // T = 2 * pi * sqrt(a^3 / mu). We will simplify to a rate dependent on 'a'.
+    let speed = 1.0;
+    if (a > 0) speed = Math.sqrt(10000 / a); // LEO moves faster than GEO
+    let t = (Date.now() / 1500 * speed) % (2 * Math.PI);
+
+    // Solve Kepler's Eq (simplified for rendering - standard circular/eccentric projection)
+    // For visual representation, we can trace by true anomaly on the ellipse
+    let satX = major * Math.cos(t) - c;
+    let satY = minor * Math.sin(t);
+
+    ctx.beginPath();
+    ctx.arc(satX, satY, 3.5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#00f5a0';
+    ctx.shadowColor = '#00f5a0';
+    ctx.shadowBlur = 6;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+}
+
+// Helpers
+function escapeHTML(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatNum(num, decimals = 1) {
+    if (num === undefined || num === null) return '0';
+    return Number(num).toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: decimals
+    });
+}
+
+// Initializer
+window.addEventListener('DOMContentLoaded', () => {
+    loadSatellites();
+    startOrbitAnimations();
+});
