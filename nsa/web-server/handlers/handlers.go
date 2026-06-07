@@ -381,6 +381,11 @@ func (app *App) registerHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Registration successful"})
+	body := "Doar ce te-ai inscris boss, welcome!"
+	err = smtp.SendMail("mailpit:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
+	if err != nil {
+		log.Printf("SMTP Error: Failed to send password reset email: %v", err)
+	}
 }
 
 type LoginRequest struct {
@@ -466,7 +471,6 @@ func (app *App) forgotPasswordHandler(c *gin.Context) {
 		return
 	}
 
-	// Send SMTP Email via MailHog
 	go func() {
 		// Use port 8443 in the link since the user runs on HTTPS port 8443
 		resetLink := fmt.Sprintf("https://localhost:8443/?reset_token=%s", token)
@@ -476,8 +480,7 @@ func (app *App) forgotPasswordHandler(c *gin.Context) {
 			"<a href=\"%s\" style=\"background-color:#00f2fe; color:#06070d; padding:10px 20px; text-decoration:none; font-weight:bold; border-radius:6px;\">Reset Password</a><br><br>"+
 			"This link will expire in 15 minutes.<br><br>If you did not request this, you can safely ignore this email.", username, resetLink)
 
-		// MailHog SMTP address
-		err := smtp.SendMail("mailhog:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
+		err := smtp.SendMail("mailpit:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
 		if err != nil {
 			log.Printf("SMTP Error: Failed to send password reset email: %v", err)
 		}
