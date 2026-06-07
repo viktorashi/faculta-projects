@@ -1,11 +1,33 @@
 services:
-  mysql:
-    image: mysql
+  mysql-master:
+    image: mysql:8.0
     restart: always
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
     environment:
       MYSQL_ROOT_PASSWORD: root
     volumes:
       - ./create-db.sql:/docker-entrypoint-initdb.d/create-db.sql
+      - ./init-master.sql:/docker-entrypoint-initdb.d/init-master.sql
+
+  mysql-slave:
+    image: mysql:8.0
+    restart: always
+    command:
+      - --server-id=2
+      - --read-only=ON
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --relay-log=mysql-relay-bin
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    depends_on:
+      - mysql-master
+    volumes:
+      - ./init-slave.sql:/docker-entrypoint-initdb.d/init-slave.sql
 
   web:
     build:
@@ -14,11 +36,13 @@ services:
     deploy:
       replicas: 2
     depends_on:
-      - mysql
+      - mysql-master
+      - mysql-slave
     environment:
       - DB_USER=root
       - DB_PASSWORD=root
-      - DB_HOST=mysql
+      - DB_HOST_MASTER=mysql-master
+      - DB_HOST_SLAVE=mysql-slave
       - DB_PORT=3306
       - DB_NAME=satelites
       - PORT=8000
@@ -30,11 +54,13 @@ services:
       - 8080:80
     environment:
       - PMA_ARBITRARY=1
-      - PMA_HOST=mysql
+      - PMA_HOSTS=mysql-master,mysql-slave
+      - PMA_VERBOSES=MySQL Master,MySQL Slave
       - PMA_USER=root
       - PMA_PASSWORD=root
     depends_on:
-      - mysql
+      - mysql-master
+      - mysql-slave
 
   nginx:
     image: nginx

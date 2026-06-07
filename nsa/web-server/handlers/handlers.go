@@ -30,13 +30,13 @@ type Satellite struct {
 }
 
 type App struct {
-	DB *sql.DB
+	DBMaster *sql.DB
+	DBSlave  *sql.DB
 }
 
-func InitDB() (*sql.DB, error) {
+func InitDB(dbHost string) (*sql.DB, error) {
 	dbUser := getEnv("DB_USER", "root")
 	dbPassword := getEnv("DB_PASSWORD", "root")
-	dbHost := getEnv("DB_HOST", "mysql")
 	dbPort := getEnv("DB_PORT", "3306")
 	dbName := getEnv("DB_NAME", "satelites")
 
@@ -48,12 +48,12 @@ func InitDB() (*sql.DB, error) {
 	// Retry connecting to DB because MySQL container might take time to start
 	maxRetries := 25
 	for i := 1; i <= maxRetries; i++ {
-		log.Printf("Connecting to database (attempt %d/%d)...", i, maxRetries)
+		log.Printf("Connecting to database at %s (attempt %d/%d)...", dbHost, i, maxRetries)
 		db, err = sql.Open("mysql", dsn)
 		if err == nil {
 			err = db.Ping()
 			if err == nil {
-				log.Println("Successfully connected to the database!")
+				log.Printf("Successfully connected to the database at %s!", dbHost)
 				return db, nil
 			}
 		}
@@ -71,8 +71,8 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func StartServer(db *sql.DB) {
-	app := &App{DB: db}
+func StartServer(dbMaster, dbSlave *sql.DB) {
+	app := &App{DBMaster: dbMaster, DBSlave: dbSlave}
 	mux := http.NewServeMux()
 
 	// Static files & Templates
@@ -160,7 +160,7 @@ func (app *App) listSatellites(w http.ResponseWriter, _ *http.Request) {
 
 func (app *App) getSatellite(w http.ResponseWriter, _ *http.Request, id int) {
 	var s Satellite
-	err := app.DB.QueryRow(
+	err := app.DBSlave.QueryRow(
 		"SELECT id, name, semimajor_axis, eccentricity, inclination, longitude_ascending_node, argument_of_perigee FROM satelite WHERE id = ?",
 		id,
 	).Scan(&s.ID, &s.Name, &s.SemimajorAxis, &s.Eccentricity, &s.Inclination, &s.LongitudeAscendingNode, &s.ArgumentOfPerigee)
@@ -203,7 +203,7 @@ func (app *App) createSatellite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert into DB
-	res, err := app.DB.Exec(
+	res, err := app.DBMaster.Exec(
 		"INSERT INTO satelite (name, semimajor_axis, eccentricity, inclination, longitude_ascending_node, argument_of_perigee) VALUES (?, ?, ?, ?, ?, ?)",
 		s.Name, s.SemimajorAxis, s.Eccentricity, s.Inclination, s.LongitudeAscendingNode, s.ArgumentOfPerigee,
 	)
@@ -234,7 +234,7 @@ func (app *App) updateSatellite(w http.ResponseWriter, r *http.Request, id int) 
 
 	// Check if satellite exists
 	var tempID int
-	err := app.DB.QueryRow("SELECT id FROM satelite WHERE id = ?", id).Scan(&tempID)
+	err := app.DBMaster.QueryRow("SELECT id FROM satelite WHERE id = ?", id).Scan(&tempID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "Satellite not found", http.StatusNotFound)
 		return
@@ -244,7 +244,7 @@ func (app *App) updateSatellite(w http.ResponseWriter, r *http.Request, id int) 
 	}
 
 	// Update DB
-	_, err = app.DB.Exec(
+	_, err = app.DBMaster.Exec(
 		"UPDATE satelite SET name = ?, semimajor_axis = ?, eccentricity = ?, inclination = ?, longitude_ascending_node = ?, argument_of_perigee = ? WHERE id = ?",
 		s.Name, s.SemimajorAxis, s.Eccentricity, s.Inclination, s.LongitudeAscendingNode, s.ArgumentOfPerigee, id,
 	)
@@ -259,7 +259,7 @@ func (app *App) updateSatellite(w http.ResponseWriter, r *http.Request, id int) 
 }
 
 func (app *App) deleteSatellite(w http.ResponseWriter, _ *http.Request, id int) {
-	res, err := app.DB.Exec("DELETE FROM satelite WHERE id = ?", id)
+	res, err := app.DBMaster.Exec("DELETE FROM satelite WHERE id = ?", id)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete record: %v", err), http.StatusInternalServerError)
 		return
@@ -275,7 +275,7 @@ func (app *App) deleteSatellite(w http.ResponseWriter, _ *http.Request, id int) 
 }
 
 func (app *App) getAllSatellites() ([]Satellite, error) {
-	rows, err := app.DB.Query("SELECT id, name, semimajor_axis, eccentricity, inclination, longitude_ascending_node, argument_of_perigee FROM satelite ORDER BY id DESC")
+	rows, err := app.DBSlave.Query("SELECT id, name, semimajor_axis, eccentricity, inclination, longitude_ascending_node, argument_of_perigee FROM satelite ORDER BY id DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -298,11 +298,21 @@ func (app *App) getAllSatellites() ([]Satellite, error) {
 }
 
 func InitWebServer() {
-	db, err := InitDB()
-	if err != nil {
-		log.Fatalf("Fatal: Database initialization failed: %v", err)
-	}
-	defer db.Close()
+	dbHostMaster := getEnv("DB_HOST_MASTER", "mysql-master")
+	dbHostSlave := getEnv("DB_HOST_SLAVE", "mysql-slave")
 
-	StartServer(db)
+	dbMaster, err := InitDB(dbHostMaster)
+	if err != nil {
+		log.Fatalf("Fatal: Master Database initialization failed: %v", err)
+	}
+
+	dbSlave, err := InitDB(dbHostSlave)
+	if err != nil {
+		log.Fatalf("Fatal: Slave Database initialization failed: %v", err)
+	}
+
+	defer dbMaster.Close()
+	defer dbSlave.Close()
+
+	StartServer(dbMaster, dbSlave)
 }
