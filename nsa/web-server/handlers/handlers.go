@@ -26,7 +26,10 @@ import (
 //go:embed templates/* static/*
 var EmbedFS embed.FS
 
-const sessionCookieName = "session_token"
+const (
+	sessionCookieName = "session_token"
+	mail_server_conn  = "mailpit:1025"
+)
 
 var hmacSecret = []byte("lallalalalallaa sunt folosint penetur semnare de sesion cookies lachimolalla")
 
@@ -410,7 +413,7 @@ func (app *App) registerHandler(c *gin.Context) {
 			"<a href=\"%s\" style=\"background-color:#00f2fe; color:#06070d; padding:10px 20px; text-decoration:none; font-weight:bold; border-radius:6px;\">Confirm Account</a>",
 			req.Email, req.Username, confirmLink)
 
-		err := smtp.SendMail("mailpit:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
+		err := smtp.SendMail(mail_server_conn, nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
 		if err != nil {
 			log.Printf("SMTP Error: Failed to send confirmation email: %v", err)
 		}
@@ -524,7 +527,7 @@ func (app *App) forgotPasswordHandler(c *gin.Context) {
 			"<a href=\"%s\" style=\"background-color:#00f2fe; color:#06070d; padding:10px 20px; text-decoration:none; font-weight:bold; border-radius:6px;\">Reset Password</a><br><br>"+
 			"This link will expire in 15 minutes.<br><br>If you did not request this, you can safely ignore this email.", username, resetLink)
 
-		err := smtp.SendMail("mailpit:1025", nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
+		err := smtp.SendMail(mail_server_conn, nil, "no-reply@astraea.space", []string{req.Email}, []byte(body))
 		if err != nil {
 			log.Printf("SMTP Error: Failed to send password reset email: %v", err)
 		}
