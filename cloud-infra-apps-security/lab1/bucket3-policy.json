@@ -1,0 +1,26 @@
+{
+  "Version": "2008-10-17",
+  "Statement": [
+    {
+      "Sid": "S3Write",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::887554786578:role/OtherBucketAccessRole"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::c234667a5895407l17488740t1w887554786578-bucket3-gt1deflxkptu/*"
+    },
+    {
+      "Sid": "ListBucket",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::887554786578:role/OtherBucketAccessRole"
+      },
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::c234667a5895407l17488740t1w887554786578-bucket3-gt1deflxkptu"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+IAMUserPassword igw-06b97f278aa9f17d0
+AccountID 887554786578
+IAMUserLoginURL https://887554786578.signin.aws.amazon.com/console
+Region us-east-1
