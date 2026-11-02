@@ -11,9 +11,16 @@ ensures (x < y ==> max == y)
 }
 
 method reconstructSumMax(sum : Int, max: Int) returns (x:Int, y:Int)
+requires max >= sum-max
 ensures sum == x + y
-ensures (x >= y ==> max == x)
-ensures (x < y ==> max == y)
+ensures max >= x
+ensures max >= y
+ensures max == x || max == y
+{
+    // nu poti sa stii ordinea, deci alegem asta doar asa
+    x:= max
+    y:= sum - max
+}
 
 
 method main(){
