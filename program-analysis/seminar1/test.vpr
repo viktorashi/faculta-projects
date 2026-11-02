@@ -1,0 +1,23 @@
+method max (x: Int, y: Int) returns (r:Int) 
+    ensures  r >= x 
+    ensures  r >= y
+{
+ if (x > y) {
+        r:= x
+ }
+    else {
+        r:= y
+ }
+}
+
+method maxProst (x: Int, y: Int) returns (r:Int) 
+    ensures  r >= x 
+    ensures  r >= y
+{
+ if (x > y) {
+        r:= x + 1
+ }
+    else {
+        r:= y + 1
+ }
+}

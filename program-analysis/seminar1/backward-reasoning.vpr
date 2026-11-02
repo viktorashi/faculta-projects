@@ -1,0 +1,51 @@
+method a(x: Int, y: Int) returns (X: Int, Y: Int)
+    requires true
+    ensures X == y && Y == x
+{
+    X := y - x
+    Y := y - X
+    X := Y + X
+}
+
+method b() {
+    var x: Int
+    var y: Int
+
+    assume x + y > (x + y) * y
+
+    x := x + y
+    y := x * y
+
+    assert x > y
+}
+
+method c() {
+    var x: Int
+    var y: Int
+
+    assume (y > 5 && x > 7) || (y <= 5 && y - x > 7)
+
+    if (y > 5) {
+        y := x - y
+    } else {
+        x := y - x
+    }
+
+    assert x > 7
+}
+
+
+method d(x: Int) returns (y: Int)
+    requires x <= 3 || x >= 17
+    ensures y % 2 == 0
+{
+    if (x < 17) {
+        if (x > 3) {
+            y := 1
+        } else {
+            y := 2
+        }
+    } else {
+        y := 6
+    }
+}
