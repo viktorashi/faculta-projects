@@ -1,0 +1,29 @@
+method sumMax(x :Int, y: Int ) returns  (sum : Int, max: Int)
+ensures sum == x + y
+// implicatie logica. 
+// super misto
+// e practic ... implementarea lol
+ensures (x >= y ==> max == x)
+ensures (x < y ==> max == y)
+{
+    max := (x >= y) ? x : y;
+    sum := x + y
+}
+
+method reconstructSumMax(sum : Int, max: Int) returns (x:Int, y:Int)
+ensures sum == x + y
+ensures (max == x ==> x >= y)
+ensures (max == y ==> x < y)
+
+
+method main(){
+    var x:Int := 1723
+    var y:Int := 42
+    var sum :Int , max :Int := sumMax(x,y)
+    assert sum == x + y
+    assert max == x
+
+    var xMaybe:Int, yMaybe:Int := reconstructSumMax(sum, max)
+    // assert x == xMaybe
+    // assert y == yMaybe
+}
