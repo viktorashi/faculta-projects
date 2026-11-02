@@ -12,18 +12,18 @@ ensures (x < y ==> max == y)
 
 method reconstructSumMax(sum : Int, max: Int) returns (x:Int, y:Int)
 ensures sum == x + y
-ensures (max == x ==> x >= y)
-ensures (max == y ==> x < y)
+ensures (x >= y ==> max == x)
+ensures (x < y ==> max == y)
 
 
 method main(){
-    var x:Int := 1723
-    var y:Int := 42
+    var x:Int := -11
+    var y:Int := -10
     var sum :Int , max :Int := sumMax(x,y)
     assert sum == x + y
-    assert max == x
+    assert max == -10
 
     var xMaybe:Int, yMaybe:Int := reconstructSumMax(sum, max)
-    // assert x == xMaybe
-    // assert y == yMaybe
+    assert x == xMaybe || x == yMaybe
+    assert y == xMaybe || y == yMaybe
 }
