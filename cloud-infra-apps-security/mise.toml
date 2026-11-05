@@ -1,2 +1,3 @@
 [tools]
 aws = "latest"
+opentofu = "latest"
