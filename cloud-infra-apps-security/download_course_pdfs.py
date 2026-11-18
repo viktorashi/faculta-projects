@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#USAGE include file="download-guides.usage.kdl"
 """
 AWS Academy Course PDF Downloader
 Automates downloading course Student Guides from AWS Academy (Canvas LMS + ContentController LTI)
@@ -414,12 +415,19 @@ def download_course_pdfs(course_id=DEFAULT_COURSE_ID, output_dir=DEFAULT_OUTPUT_
 
 
 def main():
+    # When run via mise task with a usage spec, arguments are passed as usage_* env vars:
+    env_course_id = os.environ.get("usage_course_id")
+    env_output_dir = os.environ.get("usage_output_dir")
+    env_browser = os.environ.get("usage_browser")
+    env_timeout = os.environ.get("usage_timeout")
+    env_force = os.environ.get("usage_force") == "true"
+
     parser = argparse.ArgumentParser(description="Download AWS Academy Student Guides via Opera GX session")
-    parser.add_argument("--course-id", default=DEFAULT_COURSE_ID, help=f"Canvas Course ID (default: {DEFAULT_COURSE_ID})")
-    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help=f"Destination directory (default: {DEFAULT_OUTPUT_DIR})")
-    parser.add_argument("--browser", default=DEFAULT_BROWSER, help=f"Browser application (default: {DEFAULT_BROWSER})")
-    parser.add_argument("--timeout", type=int, default=30, help="Wait timeout in seconds per module (default: 30)")
-    parser.add_argument("--force", action="store_true", help="Force re-download even if already present")
+    parser.add_argument("-c", "--course-id", default=env_course_id or DEFAULT_COURSE_ID, help=f"Canvas Course ID (default: {DEFAULT_COURSE_ID})")
+    parser.add_argument("-o", "--output-dir", default=env_output_dir or DEFAULT_OUTPUT_DIR, help=f"Destination directory (default: {DEFAULT_OUTPUT_DIR})")
+    parser.add_argument("-b", "--browser", default=env_browser or DEFAULT_BROWSER, help=f"Browser application (default: {DEFAULT_BROWSER})")
+    parser.add_argument("-t", "--timeout", type=int, default=int(env_timeout) if env_timeout else 30, help="Wait timeout in seconds per module (default: 30)")
+    parser.add_argument("-f", "--force", action="store_true", default=env_force, help="Force re-download even if already present")
     args = parser.parse_args()
 
     download_course_pdfs(

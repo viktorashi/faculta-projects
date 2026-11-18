@@ -4,23 +4,4 @@ opentofu = "latest"
 
 [tasks.download-guides]
 description = "Download AWS Academy Student Guides via Opera GX browser session"
-usage = '''
-flag "-c --course-id <course_id>" help="Canvas Course ID" default="192250"
-flag "-o --output-dir <path>" help="Destination directory for downloaded guides" default="~/Downloads/AWS Academy Cloud Security Foundations"
-flag "-b --browser <name>" help="Browser application to open LTI launch" default="Opera GX"
-flag "-t --timeout <seconds>" help="Wait timeout in seconds per module" default="30"
-flag "-f --force" help="Force re-download even if already present on disk"
-'''
-run = '''
-extra_flags=""
-if [ "$usage_force" = "true" ]; then
-    extra_flags="--force"
-fi
-
-python3 download_course_pdfs.py \
-    --course-id "$usage_course_id" \
-    --output-dir "$usage_output_dir" \
-    --browser "$usage_browser" \
-    --timeout "$usage_timeout" \
-    $extra_flags
-'''
+file = "./download_course_pdfs.py"

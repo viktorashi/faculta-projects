@@ -1,0 +1,5 @@
+flag "-c --course-id <course_id>" help="Canvas Course ID" default="192250"
+flag "-o --output-dir <path>" help="Destination directory for downloaded guides" default="~/Downloads/AWS Academy Cloud Security Foundations"
+flag "-b --browser <name>" help="Browser application to open LTI launch" default="Opera GX"
+flag "-t --timeout <seconds>" help="Wait timeout in seconds per module" default="30"
+flag "-f --force" help="Force re-download even if already present on disk"
