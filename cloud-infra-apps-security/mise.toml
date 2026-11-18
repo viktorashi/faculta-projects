@@ -1,3 +1,7 @@
 [tools]
 aws = "latest"
 opentofu = "latest"
+
+[tasks.download-guides]
+description = "Download AWS Academy Student Guides via Opera GX browser session"
+run = "python3 download_course_pdfs.py"
