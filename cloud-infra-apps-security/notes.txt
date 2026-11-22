@@ -1,0 +1,30 @@
+
+cica in general oricum PDF-urile alea pe care le-am downloadat dau cover 100% la ce se zice in slideuri sau videouri.
+singurele chesiti care chiar ar merge vizitate in videouri sunt walk-throughurile cu consola de AWS, sa vezi macar cum arata: care sunt urmatoarele:
+
+
+  1. Course Introduction / Welcome and Overview
+      • Video Title: How to complete lab exercises
+      • Location: Module Welcome and Overview (Item 4)
+      • What it shows: Walk-through of launching and navigating the AWS Management Console through the AWS
+      Academy Learner Lab sandbox.
+  2. Module 3: Securing Access to Cloud Resources
+      • Video Title: Demo: Amazon S3 Cross-Account Resource-Based Policy
+      • Location: Module 3, Section: Examples of authorizing with IAM (right before Additional
+      authentication and access management services / Slide 41 in Student Guide)
+      • What it shows: Step-by-step console demonstration configuring an S3 bucket policy to grant cross-
+      account access to an IAM principal in another AWS account.
+  3. Module 6: Logging and Monitoring
+      • Video Title: Demo: Security Hub
+      • Location: Module 6, Section: Additional AWS services for logging and monitoring (right before the
+      Hands-on Lab and Wrap-up Video / Slide 41 in Student Guide)
+      • What it shows: Walk-through navigating AWS Security Hub in the console (viewing compliance
+      standards, aggregated findings, and security scores).
+
+  ──────
+  What about all other modules?
+
+  • Modules 1, 2, 4, 5, 7, and 8 have ZERO console walk-through videos.
+  • Every other video titled Module X Wrap-up video is just a 1-minute narrated recap with static summary
+  slides (no console).
+
